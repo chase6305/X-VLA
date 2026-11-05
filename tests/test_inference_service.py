@@ -237,6 +237,25 @@ class StartupTests(unittest.TestCase):
         self.model.run.assert_not_called()
         self.assertEqual(self.info.read_text(), 'created by another server')
 
+    def test_replacement_runtime_info_survives_the_previous_service_shutdown(self):
+        replacement = self.info.with_name('replacement.json')
+        for error in (None, RuntimeError('old server stopped'), KeyboardInterrupt(), SystemExit(143)):
+            with self.subTest(exit_type=type(error).__name__):
+                def serve(**kwargs):
+                    replacement.write_text(json.dumps({'port': 9000, 'owner': 'replacement'}))
+                    replacement.replace(self.info)
+                    if error is not None:
+                        raise error
+                self.model.run.side_effect = serve
+                if isinstance(error, (RuntimeError, SystemExit)):
+                    with self.assertRaises(SystemExit):
+                        self.invoke()
+                else:
+                    self.invoke()
+                self.assertTrue(self.info.exists())
+                self.assertEqual(json.loads(self.info.read_text()), {'port': 9000, 'owner': 'replacement'})
+                self.info.unlink()
+
     def test_service_errors_exit_nonzero_and_remove_runtime_info(self):
         for error in (RuntimeError('bind failed'), SystemExit(2)):
             with self.subTest(error=error):

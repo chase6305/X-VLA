@@ -149,11 +149,13 @@ def main():
     if threading.current_thread() is threading.main_thread():
         previous_sigterm = signal.signal(signal.SIGTERM, _exit_on_sigterm)
     info_created = False
+    created_info_stat = None
     try:
         # --- Write safely ---
         try:
             with open(info_path, "x") as f:
                 info_created = True
+                created_info_stat = os.fstat(f.fileno())
                 json.dump(infos, f, indent=4)
             print(f"📝 Server info written to {info_path}")
         except Exception as e:
@@ -176,7 +178,8 @@ def main():
             signal.signal(signal.SIGTERM, previous_sigterm)
         if info_created:
             try:
-                os.remove(info_path)
+                if created_info_stat is None or osp.samestat(created_info_stat, os.lstat(info_path)):
+                    os.remove(info_path)
             except FileNotFoundError:
                 pass
 
