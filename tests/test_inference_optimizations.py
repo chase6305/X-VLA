@@ -1,5 +1,6 @@
 import copy
 import io
+import importlib
 import sys
 import tempfile
 import unittest
@@ -70,15 +71,18 @@ class InferenceOptimizationTests(unittest.TestCase):
         self.adapter.save_pretrained(self.root / 'adapter')
         self.compiled = []
 
-    def invoke(self, flags):
+    def invoke(self, flags, trace=False):
         model = copy.deepcopy(self.original)
+        real_compile = torch.compile
+        if trace:
+            importlib.import_module('torch._dynamo')
         argv = ['deploy.py', '--model_path', 'local-model', '--device', 'cpu',
                 '--output_dir', str(self.root / f'run-{len(list(self.root.iterdir()))}'),
                 '--disable_slurm', *flags]
 
         def compile_head(head, **kwargs):
             self.assertEqual(kwargs, {'mode': 'default'})
-            compiled = CountingHead(head)
+            compiled = CountingHead(real_compile(head, backend='eager') if trace else head)
             self.compiled.append(compiled)
             return compiled
 
@@ -127,6 +131,15 @@ class InferenceOptimizationTests(unittest.TestCase):
                 self.assertIs(model.transformer, self.compiled[-1])
                 self.assertEqual(self.compiled[-1].calls, 3)
                 self.assertEqual(model.result.shape, (1, 3, 20))
+
+    def test_traced_head_preserves_actions_in_each_adapter_configuration(self):
+        adapter = ['--LoRA_path', str(self.root / 'adapter')]
+        for flags in ([], adapter, adapter + ['--merge_lora']):
+            with self.subTest(flags=flags):
+                reference = self.invoke(flags)
+                candidate = self.invoke(flags + ['--compile_action_head'], trace=True)
+                torch.testing.assert_close(candidate.result, reference.result, atol=2e-6, rtol=1e-5)
+                self.assertEqual(self.compiled[-1].calls, 3)
 
 
 if __name__ == '__main__':
