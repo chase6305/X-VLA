@@ -116,7 +116,8 @@ def set_seed(seed: int):
 def build_optimizer(model: XVLA, lr: float, weight_decay: float, betas=(0.9, 0.95), lr_coef_soft=1.0):
     """Split param groups by module type with different learning rates."""
     vlm_params = list(model.vlm.parameters())
-    soft_prompt_params = list(model.transformer.soft_prompt_hub.parameters())
+    soft_prompt_hub = getattr(model.transformer, "soft_prompt_hub", None)
+    soft_prompt_params = list(soft_prompt_hub.parameters()) if soft_prompt_hub is not None else []
     action_params = list(model.transformer.action_decoder.parameters()) + list(model.transformer.action_encoder.parameters())
     exclude = set(map(id, vlm_params + soft_prompt_params + action_params))
     transformer_core_params = [p for p in model.parameters() if id(p) not in exclude]
