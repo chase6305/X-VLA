@@ -149,6 +149,10 @@ The client communicates via HTTP POST, sending multimodal data (vision + languag
 Supply camera slots consecutively from `image0`. Missing intermediate slots or
 invalid image payloads return HTTP 400 so that camera identities are preserved.
 
+Use a `domain_id` within the checkpoint's configured domain range. `proprio`
+must be a one-dimensional real state vector whose values remain finite in the
+model's precision.
+
 #### Example Client Code
 
 ```python
