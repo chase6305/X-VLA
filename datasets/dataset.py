@@ -17,7 +17,7 @@
 from __future__ import annotations
 from typing import Dict, Iterable, List
 import io, json, random, numpy as np, torch
-from torch.utils.data import IterableDataset
+from torch.utils.data import IterableDataset, get_worker_info
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 from mmengine import fileio
@@ -76,7 +76,7 @@ class InfiniteDataReader(IterableDataset):
         self.image_aug = [
             transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC),
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.) \
-                if training else transforms.Lambda(lambda x: x),
+                if training else torch.nn.Identity(),
             transforms.ToTensor(),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), inplace=True),
         ]
@@ -91,6 +91,10 @@ class InfiniteDataReader(IterableDataset):
         while True:
             traj_indices = list(range(len(meta["datalist"])))
             if self.training: random.shuffle(traj_indices)
+            else:
+                worker = get_worker_info()
+                if worker is not None:
+                    traj_indices = traj_indices[worker.id::worker.num_workers]
             handler = Handler(meta=meta, num_views=self.num_views)
             produced_sample = False
             for traj_idx in traj_indices:
