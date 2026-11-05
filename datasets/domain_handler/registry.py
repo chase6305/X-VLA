@@ -88,5 +88,5 @@ def get_handler_cls(dataset_name: str) -> Type[DomainHandler]:
     except KeyError:
         raise KeyError(
             f"No handler registered for dataset '{dataset_name}'. "
-            f"Add it to _REGISTRY in datasets/domains/registry.py."
+            f"Add it to _REGISTRY in datasets/domain_handler/registry.py."
         )

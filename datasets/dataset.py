@@ -45,6 +45,9 @@ class InfiniteDataReader(IterableDataset):
                  action_mode: str = "ee6d",
                  lang_aug: str = None,
                  ):
+        for name, value in (("num_actions", num_actions), ("num_views", num_views)):
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
         self.num_views = num_views
         self.training = training
         self.num_actions = num_actions
@@ -75,7 +78,11 @@ class InfiniteDataReader(IterableDataset):
             if dataset_key in self.metas:
                 raise ValueError(f"Duplicate dataset identifier {dataset_key!r} in {file_path!r}. "
                                  "Use distinct dataset identifiers to avoid replacing loaded trajectories.")
+            get_handler_cls(meta.get("robot_type", dataset_key))
             self.metas[dataset_key] = meta
+
+        if training and not self.metas:
+            raise ValueError(f"No dataset metadata found in {metas_path!r} for training.")
 
         self.image_aug = [
             transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC),
