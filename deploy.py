@@ -29,6 +29,10 @@ def main():
                         help="Path to the pretrained XVLA model directory")
     parser.add_argument('--processor_path', type=str, default=None)
     parser.add_argument('--LoRA_path', type=str, default=None)
+    parser.add_argument('--merge_lora', action='store_true',
+                        help='Merge LoRA into base weights for inference (requires --LoRA_path)')
+    parser.add_argument('--compile_action_head', action='store_true',
+                        help='Compile the action head; the first request includes compilation time')
     parser.add_argument("--output_dir", type=str, default="./logs",
                         help="Directory to save runtime info (info.json)")
     parser.add_argument("--device", type=str, default="cuda",
@@ -40,6 +44,8 @@ def main():
     parser.add_argument("--disable_slurm", action="store_true", default=False)
 
     args = parser.parse_args()
+    if args.merge_lora and args.LoRA_path is None:
+        parser.error('--merge_lora requires --LoRA_path')
     os.makedirs(args.output_dir, exist_ok=True)
 
     print("🚀 Starting XVLA Inference Server...")
@@ -90,8 +96,16 @@ def main():
             ).to(device)
             
             print("✅ LoRA weights applied successfully.")
-            
-            
+
+            if args.merge_lora:
+                model = model.merge_and_unload(safe_merge=True)
+                print("✅ LoRA weights merged for inference.")
+
+        if args.compile_action_head:
+            base_model = model.get_base_model() if args.LoRA_path and not args.merge_lora else model
+            base_model.transformer = torch.compile(base_model.transformer, mode='default')
+            print("✅ Action head compilation enabled; the first request will warm up the compiler.")
+
         print("✅ Model successfully loaded and moved to device.")
     except Exception as e:
         print(f"❌ Failed to load model: {e}")
