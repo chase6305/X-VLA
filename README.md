@@ -261,7 +261,7 @@ uses `robot_type`. LeRobot v2.1 sources use `root_path` as their identifier.
 | Handler       | Dataset               | Description                               |
 | :------------ | :-------------------- | :---------------------------------------- |
 | `"AGIBOT"` | Agibot | LeRobot trajectory loader |
-| `"Bridge"`, `"Calvin"`, `"libero"` | Simulation datasets | HDF5 trajectory loaders |
+| `"Bridge"`, `"Calvin"`, `"libero"` | Bridge / CALVIN / LIBERO | HDF5 trajectory loaders |
 | `"agiworld-on-site-pack"` | AGIWorld | Scattered trajectory loader; see registry for other domain names |
 
 ---
