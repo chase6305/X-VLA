@@ -78,6 +78,8 @@ def get_args_parser():
     # Data
     parser.add_argument("--train_metas_path", type=str, required=True, help="Path to training metadata")
     parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--num_workers", type=int, default=4, help="Data workers; use 0 for in-process loading")
+    parser.add_argument("--prefetch_factor", type=int, default=2, help="Prefetched batches per data worker")
 
     # Optimizer
     parser.add_argument("--learning_rate", type=float, default=1e-4)
@@ -200,6 +202,8 @@ def main(args):
         num_actions=model.num_actions,
         action_mode=model.action_mode,
         training=True,
+        num_workers=args.num_workers,
+        prefetch_factor=args.prefetch_factor,
     )
 
     # Optimizer

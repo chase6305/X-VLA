@@ -280,6 +280,8 @@ accelerate launch \
 | `--models`           | Base model (e.g., `'2toINF/X-VLA-Pt'`) |
 | `--train_metas_path` | Path to meta JSON file(s)              |
 | `--batch_size`       | Batch size                             |
+| `--num_workers`      | Data workers (default: 4); use 0 for in-process loading |
+| `--prefetch_factor`  | Prefetched batches per worker (default: 2) |
 | `--learning_rate`    | Base LR                                |
 | `--learning_coef`    | LR multiplier for soft prompts         |
 | `--iters`            | Total training iterations              |
