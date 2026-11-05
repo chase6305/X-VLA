@@ -120,7 +120,8 @@ class ProcessorTests(unittest.TestCase):
         model.save_pretrained.side_effect = lambda path, **kwargs: Path(path).mkdir(parents=True)
         optim = Mock(param_groups=[{'name': 'vlm', 'lr': 0.},
                                    {'name': 'transformer_core', 'lr': 0.}])
-        accelerator = Mock(process_index=0, num_processes=1, is_main_process=main_process)
+        accelerator = Mock(process_index=0, num_processes=1, is_main_process=main_process,
+                           device=torch.device('cpu'))
         accelerator.prepare.side_effect = lambda *objects: objects
         accelerator.unwrap_model.return_value = model
         with ExitStack() as stack:
