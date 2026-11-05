@@ -236,9 +236,11 @@ class XVLA(PreTrainedModel):
         def act(payload: Dict[str, Any]):
             try:
                 self.eval()
-                # Decode up to 3 image inputs
+                # Decode consecutive camera slots from the processor's saved layout.
                 images = []
-                camera_keys = ("image0", "image1", "image2")
+                camera_keys = tuple(f"image{index}" for index in range(getattr(processor, "num_views", 3)))
+                if any(key.startswith("image") and key[5:].isdigit() and key not in camera_keys for key in payload):
+                    return JSONResponse({"error": "Camera slot exceeds the processor's configured view count."}, status_code=400)
                 image_keys = [key for key in camera_keys if key in payload]
                 if image_keys != list(camera_keys[:len(image_keys)]):
                     return JSONResponse({"error": "Camera slots must be consecutive, starting with image0."}, status_code=400)
@@ -264,10 +266,17 @@ class XVLA(PreTrainedModel):
 
                 # Build proprio/domain tensors
                 proprio = torch.tensor(np.asarray(json_numpy.loads(payload["proprio"])))
-                domain = int(payload["domain_id"])
+                domain_value = payload["domain_id"]
+                domain = int(domain_value)
+                if isinstance(domain_value, float) and domain_value != domain:
+                    return JSONResponse({"error": "domain_id must be an integer."}, status_code=400)
                 if not 0 <= domain < self.config.num_domains:
                     return JSONResponse({"error": "domain_id is outside the checkpoint's domain range."}, status_code=400)
                 domain_id = torch.tensor([domain], dtype=torch.long)
+                steps_value = payload.get("steps", 10)
+                steps = int(steps_value)
+                if isinstance(steps_value, float) and steps_value != steps:
+                    return JSONResponse({"error": "steps must be an integer."}, status_code=400)
 
                 # Align to model's device/dtype
                 device = next(self.parameters()).device
@@ -296,7 +305,6 @@ class XVLA(PreTrainedModel):
                 })
 
                 # Inference
-                steps = int(payload.get("steps", 10))
                 action = self.generate_actions(**inputs, steps=steps).squeeze(0).float().cpu().numpy()
                 return JSONResponse({"action": action.tolist()})
 

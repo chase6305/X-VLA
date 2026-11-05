@@ -70,6 +70,28 @@ class RequestTests(unittest.TestCase):
                 self.assertEqual(endpoint(self.payload(state)).status_code, 400)
                 self.assertIsNone(model.received)
 
+    def test_fractional_domain_and_step_values_are_not_silently_truncated(self):
+        for field in ('domain_id', 'steps'):
+            for value in (-.1, .1, .5, 1.9):
+                with self.subTest(field=field, value=value):
+                    model = RequestPolicy()
+                    model._build_app(processor)
+                    endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+                    payload = self.payload(np.zeros(20))
+                    payload[field] = value
+                    self.assertEqual(endpoint(payload).status_code, 400)
+                    self.assertIsNone(model.received)
+            for value in (1, 1., '1', True):
+                with self.subTest(field=field, compatible_value=value):
+                    model = RequestPolicy()
+                    model._build_app(processor)
+                    endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+                    payload = self.payload(np.zeros(20))
+                    payload[field] = value
+                    self.assertEqual(endpoint(payload).status_code, 200)
+                    self.assertEqual(model.received[field].item() if field == 'domain_id'
+                                     else model.received[field], 1)
+
     def test_state_must_be_finite_after_conversion_to_model_dtype(self):
         for value in (np.nan, np.inf, -np.inf, 1e300):
             with self.subTest(value=value):
@@ -176,6 +198,26 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(endpoint(payload).status_code, 400)
         process.assert_not_called()
         self.assertIsNone(model.received)
+
+    def test_camera_slots_follow_processor_configuration_and_extra_views_are_rejected(self):
+        for views in (1, 2, 4):
+            with self.subTest(views=views):
+                model = RequestPolicy()
+                process = Mock(wraps=processor, num_views=views)
+                model._build_app(process)
+                endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+                payload = self.payload(np.zeros(20))
+                payload.update({f'image{slot}': json_numpy.dumps(
+                    np.full((2, 2, 3), 20*(slot+1), np.uint8)) for slot in range(views)})
+                self.assertEqual(endpoint(payload).status_code, 200)
+                self.assertEqual([np.asarray(image)[0, 0, 0] for image in process.call_args.args[0]],
+                                 [20*(slot+1) for slot in range(views)])
+                process.reset_mock()
+                model.received = None
+                payload[f'image{views}'] = payload['image0']
+                self.assertEqual(endpoint(payload).status_code, 400)
+                process.assert_not_called()
+                self.assertIsNone(model.received)
 
 
 class StartupModel:
