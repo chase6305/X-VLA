@@ -33,7 +33,7 @@ dependencies:
   # Numeric stack (real versions)
   # -------------------------
   - numpy=1.26.*
-  - scipy=1.13.*
+  - scipy=1.15.*
 
   # -------------------------
   # pip-only packages
