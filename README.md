@@ -250,13 +250,19 @@ X-VLA supports fine-tuning on new demonstrations via a modular and extensible da
    * `datasets/domain_handler/registry.py`
    * `datasets/domain_config.py`
 
+Use a unique `dataset_name` for each metadata source. If it differs from a
+registered handler name, set `robot_type` explicitly (for example,
+`dataset_name="bridge_train_a", robot_type="Bridge"`). Sampling weights in
+`DATA_WEIGHTS` use the data-source identifier, while handler/domain selection
+uses `robot_type`. LeRobot v2.1 sources use `root_path` as their identifier.
+
 ### Example Handlers
 
 | Handler       | Dataset               | Description                               |
 | :------------ | :-------------------- | :---------------------------------------- |
-| `"lerobot"`   | Agibot-Beta           | Optimized for LEROBOT format              |
-| `"h5py"`      | RoboMind / Simulation | Efficient loading from `.h5` trajectories |
-| `"scattered"` | AGIWorld              | Handles scattered trajectory storage      |
+| `"AGIBOT"` | Agibot | LeRobot trajectory loader |
+| `"Bridge"`, `"Calvin"`, `"libero"` | Simulation datasets | HDF5 trajectory loaders |
+| `"agiworld-on-site-pack"` | AGIWorld | Scattered trajectory loader; see registry for other domain names |
 
 ---
 
