@@ -231,7 +231,7 @@ def main(args):
         lang = processor.encode_language(batch["language_instruction"])
         batch.pop("language_instruction", None)
         inputs = {**batch, **lang}
-        inputs = {k: v.cuda(non_blocking=True) for k, v in inputs.items()}
+        inputs = {k: v.to(accelerator.device, non_blocking=True) for k, v in inputs.items()}
         # Update LR per group
         update_group_lrs(optim, global_step, args)
 

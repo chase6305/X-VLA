@@ -290,6 +290,7 @@ accelerate launch \
 
 Both training entrypoints use the saved processor's camera count when building
 the dataset, keeping custom camera layouts consistent with inference.
+Tensor batches follow Accelerator's selected device, including CPU debugging runs.
 
 ---
 

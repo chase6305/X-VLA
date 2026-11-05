@@ -26,6 +26,10 @@ class StopAfterDataLoader(Exception):
     pass
 
 
+class StopAtPolicy(Exception):
+    pass
+
+
 class DataLoaderOptionsTests(unittest.TestCase):
     def create(self, **kwargs):
         with patch.object(datasets, 'InfiniteDataReader', return_value=Samples()):
@@ -141,6 +145,45 @@ class DataLoaderOptionsTests(unittest.TestCase):
                         module.main(args)
                     accelerator.assert_not_called()
                     load.assert_not_called()
+
+    def test_both_trainers_transfer_tensors_to_the_accelerator_device(self):
+        for name in ('train', 'peft_train'):
+            with self.subTest(entrypoint=name), ExitStack() as stack:
+                module = importlib.import_module(name)
+                model = Mock(num_actions=30, action_mode='ee6d', side_effect=StopAtPolicy)
+                optim = Mock()
+                accelerator = Mock(process_index=0, num_processes=1, device=torch.device('cpu'))
+                accelerator.prepare.side_effect = lambda *objects: objects
+                batch = {'language_instruction': ['move'], 'image_input': torch.zeros(1, 3, 3, 2, 2),
+                         'image_mask': torch.tensor([[True, False, False]]),
+                         'domain_id': torch.tensor([0]), 'proprio': torch.zeros(1, 20),
+                         'action': torch.zeros(1, 30, 20)}
+                processor = Mock(num_views=3)
+                processor.encode_language.return_value = {'input_ids': torch.tensor([[0, 2]])}
+                stack.enter_context(patch.object(module, 'Accelerator', return_value=accelerator))
+                stack.enter_context(patch.object(module, 'get_logger', return_value=Mock()))
+                stack.enter_context(patch.object(module, 'set_seed'))
+                stack.enter_context(patch.object(module.XVLA, 'from_pretrained', return_value=model))
+                stack.enter_context(patch.object(module.XVLAProcessor, 'from_pretrained', return_value=processor))
+                stack.enter_context(patch.object(module, 'create_dataloader', return_value=[batch]))
+                stack.enter_context(patch.object(module, 'build_optimizer', return_value=optim))
+                stack.enter_context(patch.object(module, 'update_group_lrs'))
+                stack.enter_context(patch.object(torch.Tensor, 'cuda',
+                    side_effect=AssertionError('the selected device was bypassed')))
+                if name == 'peft_train':
+                    stack.enter_context(patch.object(module, 'get_peft_model', return_value=model))
+                with tempfile.TemporaryDirectory() as directory:
+                    args = module.get_args_parser().parse_args([
+                        '--models', 'unused', '--train_metas_path', 'unused', '--output_dir', directory])
+                    with self.assertRaises(StopAtPolicy):
+                        module.main(args)
+                inputs = model.call_args.kwargs
+                self.assertTrue(inputs)
+                for value in inputs.values():
+                    self.assertEqual(value.device, accelerator.device)
+                self.assertEqual(inputs['input_ids'].dtype, torch.long)
+                self.assertEqual(inputs['domain_id'].dtype, torch.long)
+                self.assertEqual(inputs['image_mask'].dtype, torch.bool)
 
 
 if __name__ == '__main__':
