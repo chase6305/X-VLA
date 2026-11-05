@@ -294,6 +294,12 @@ the dataset, keeping custom camera layouts consistent with inference.
 Tensor batches follow Accelerator's selected device, including CPU debugging runs.
 Batch size, iteration count and logging/checkpoint intervals must be positive.
 
+Each data worker can also create NumPy/SciPy BLAS and Arrow thread pools.
+Compare launch-time `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and
+`MKL_NUM_THREADS` limits alongside worker and prefetch counts. Set them before
+library imports; they also affect CPU work in the main process. Choose limits
+from measurements on the target machine rather than assuming more threads help.
+
 Use `--use_processor_image_config` when training with custom image preprocessing.
 The reader then applies color augmentation to the source image before the saved
 image processor's resize/crop, rescaling and normalization. Without this flag,
