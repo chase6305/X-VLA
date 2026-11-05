@@ -143,14 +143,14 @@ class AGIWolrdHandler(DomainHandler):  # Note: "Wolrd" looks like a typo; kept f
             if traj_end_idx - traj_start_idx < 2:
                 continue
             # Candidate start indices; keep tail room
-            index_list = list(range(traj_start_idx, 
-                                        max(traj_start_idx + 1, 
-                                        traj_end_idx - DOMAIN2CHUNKSIZE[domain_name])))
+            candidate_end = max(traj_start_idx + 1, traj_end_idx - DOMAIN2CHUNKSIZE[domain_name])
+            index_list = list(range(traj_start_idx, candidate_end))
             if domain_name == 'agiworld-on-site-pour':
+                # Repeated candidates do not expand the original sampling range.
                 for idx in gripper_change_idx: 
                     for i in range(idx-DOMAIN2CHUNKSIZE[domain_name], \
                                 idx+DOMAIN2CHUNKSIZE[domain_name]):
-                        if i in index_list: index_list.append(i)
+                        if traj_start_idx <= i < candidate_end: index_list.append(i)
                     
             random.shuffle(index_list)
             for idx in index_list:

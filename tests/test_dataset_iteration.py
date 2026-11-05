@@ -300,6 +300,27 @@ class InstructionTests(unittest.TestCase):
                     torch.testing.assert_close(samples[0]['abs_trajectory'][0, 0],
                                                torch.tensor(.01 if splits else 0.))
 
+    def test_pour_oversampling_preserves_duplicate_weights_and_seeded_order(self):
+        length = 70
+        ee = np.zeros((length, 20), dtype=np.float32)
+        ee[:, 0] = np.arange(length)*.01
+        joints = np.zeros((length, 16), dtype=np.float32)
+        joints[1:65, -1] = 1.
+        handler = agiworld.AGIWolrdHandler(meta={
+            'dataset_name': 'agiworld-on-site-pour', 'datalist': ['unused/episode']}, num_views=1)
+        # Base candidates 0..8. Change 0 repeats all; change 64 repeats 3..8.
+        expected = list(range(9)) + list(range(9)) + list(range(3, 9))
+        rng = random.Random(23)
+        rng.shuffle(expected)
+        with patch.object(handler, 'read_action', return_value=(joints, ee)), \
+             patch.object(agiworld.random, 'shuffle', side_effect=random.Random(23).shuffle), \
+             patch.object(agiworld.random, 'random', return_value=0.), \
+             patch.object(agiworld.Image, 'open', return_value=Image.new('RGB', (2, 2))):
+            samples = list(handler.iter_episode(0, num_actions=3, training=True,
+                action_mode='ee6d', image_aug=image_tensor, lang_aug_map=None))
+        actual = [round(float(sample['abs_trajectory'][0, 0])*100) for sample in samples]
+        self.assertEqual(actual, expected)
+
 
 if __name__ == '__main__':
     torch.set_num_threads(1)
