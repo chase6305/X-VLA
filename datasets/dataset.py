@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 from typing import Dict, Iterable, List
+import os
 import io, json, random, numpy as np, torch
 from torch.utils.data import IterableDataset, get_worker_info
 from torchvision import transforms
@@ -70,7 +71,10 @@ class InfiniteDataReader(IterableDataset):
             elif "codebase_version" in meta.keys() and meta["codebase_version"] == 'v2.1':
                 meta['datalist'] = []
                 if "root_path" not in meta.keys(): meta['root_path'] = "/".join(file_path.split("/")[:-2])
-                with io.BytesIO(fileio.get(fileio.join_path("/".join(file_path.split("/")[:-1]), "episodes.jsonl"))) as f:
+                episodes_path = fileio.join_path("/".join(file_path.split("/")[:-1]), "episodes.jsonl")
+                with (open(episodes_path, "rb")
+                      if "://" not in episodes_path and os.path.isfile(episodes_path)
+                      else io.BytesIO(fileio.get(episodes_path))) as f:
                     for line in f: meta['datalist'].append(json.loads(line.decode("utf-8")))
                 dataset_key = meta['root_path']
                 print(f"== lerobot dataset {meta['robot_type']} with {meta['total_episodes']} trajs at {meta['root_path']}====")

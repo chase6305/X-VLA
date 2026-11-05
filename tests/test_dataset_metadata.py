@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import datasets.dataset as reader_module
 from datasets.dataset import InfiniteDataReader
 
 
@@ -64,6 +65,39 @@ class DatasetMetadataTests(unittest.TestCase):
                 json.dumps({'episode_index': 0, 'tasks': [name]}) + '\n')
         with self.assertRaisesRegex(ValueError, 'Duplicate dataset identifier.*shared-dataset'):
             InfiniteDataReader(str(self.root))
+
+    def test_local_lerobot_episode_index_avoids_a_bulk_read(self):
+        episodes = self.root / 'episodes.jsonl'
+        records = [{'episode_index': index, 'tasks': ['move the object']} for index in range(3)]
+        episodes.write_text(''.join(json.dumps(record)+'\n' for record in records))
+        self.write_meta('info.json', {'codebase_version': 'v2.1', 'root_path': '/local-lift',
+                        'robot_type': 'lift2', 'total_episodes': 3})
+        original_get = reader_module.fileio.get
+
+        def bounded_get(path):
+            if str(path) == str(episodes):
+                raise AssertionError('The episode index was bulk-loaded.')
+            return original_get(path)
+
+        with patch.object(reader_module.fileio, 'get', side_effect=bounded_get):
+            reader = InfiniteDataReader(str(self.root / 'info.json'), training=False)
+        self.assertEqual(reader.metas['/local-lift']['datalist'], records)
+
+    def test_virtual_lerobot_episode_indexes_keep_the_fileio_backend(self):
+        root = 'virtual://dataset'
+        records = [{'episode_index': 7, 'tasks': ['move the object']}]
+        payloads = {f'{root}/meta/info.json': json.dumps({'codebase_version': 'v2.1',
+            'root_path': root, 'robot_type': 'lift2', 'total_episodes': 1}).encode(),
+            f'{root}/meta/episodes.jsonl': (json.dumps(records[0])+'\n').encode()}
+
+        def join_path(root, *parts):
+            return root.rstrip('/')+'/'+('/'.join(parts)) if root else '/'.join(parts)
+
+        with patch.object(reader_module.fileio, 'isdir', return_value=False), \
+             patch.object(reader_module.fileio, 'join_path', side_effect=join_path), \
+             patch.object(reader_module.fileio, 'get', side_effect=payloads.__getitem__):
+            reader = InfiniteDataReader(f'{root}/meta/info.json', training=False)
+        self.assertEqual(reader.metas[root]['datalist'], records)
 
 
 if __name__ == '__main__':
