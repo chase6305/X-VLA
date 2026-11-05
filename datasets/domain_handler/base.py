@@ -82,7 +82,7 @@ class BaseHDF5Handler(DomainHandler):
 
     # --- Optional overrides -------------------------------------------------
     def get_image_datasets(self, f: h5py.File) -> Sequence[Any]:
-        keys: Sequence[str] = self.meta["observation_key"]
+        keys: Sequence[str] = list(self.meta["observation_key"])[:self.num_views]
         return [f[k][()] for k in keys]
 
     def read_instruction(self, f: h5py.File) -> str:
