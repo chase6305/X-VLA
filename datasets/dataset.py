@@ -52,7 +52,7 @@ class InfiniteDataReader(IterableDataset):
         self.metas: Dict[str, dict] = {}
         print("use action mode:", action_mode)
         if fileio.isdir(metas_path):
-            meta_files = fileio.list_dir_or_file(metas_path, suffix=".json", recursive=True, list_dir=False)
+            meta_files = list(fileio.list_dir_or_file(metas_path, suffix=".json", recursive=True, list_dir=False))
             root = metas_path
         else: meta_files, root = [metas_path], ""
         
@@ -62,16 +62,20 @@ class InfiniteDataReader(IterableDataset):
             ### General Style
             if 'dataset_name' in meta.keys() and 'datalist' in meta.keys():
                 print(f"== dataset {meta['dataset_name']} with {len(meta['datalist'])} trajs")
-                self.metas[meta["dataset_name"]] = meta
+                dataset_key = meta["dataset_name"]
             ### Lerobot v2.1 style
             elif "codebase_version" in meta.keys() and meta["codebase_version"] == 'v2.1':
                 meta['datalist'] = []
                 if "root_path" not in meta.keys(): meta['root_path'] = "/".join(file_path.split("/")[:-2])
                 with io.BytesIO(fileio.get(fileio.join_path("/".join(file_path.split("/")[:-1]), "episodes.jsonl"))) as f:
                     for line in f: meta['datalist'].append(json.loads(line.decode("utf-8")))
-                self.metas[meta['root_path']] = meta
+                dataset_key = meta['root_path']
                 print(f"== lerobot dataset {meta['robot_type']} with {meta['total_episodes']} trajs at {meta['root_path']}====")
             else: raise NotImplementedError(f"unrecognized meta file format: {file}")
+            if dataset_key in self.metas:
+                raise ValueError(f"Duplicate dataset identifier {dataset_key!r} in {file_path!r}. "
+                                 "Use distinct dataset identifiers to avoid replacing loaded trajectories.")
+            self.metas[dataset_key] = meta
 
         self.image_aug = [
             transforms.Resize((224, 224), interpolation=InterpolationMode.BICUBIC),
