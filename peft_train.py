@@ -184,6 +184,9 @@ def main(args):
         raise ValueError("num_workers must be non-negative")
     if args.prefetch_factor < 1:
         raise ValueError("prefetch_factor must be positive")
+    for name in ("batch_size", "iters", "log_interval", "save_interval"):
+        if getattr(args, name) < 1:
+            raise ValueError(f"{name} must be positive")
     output_dir = Path(args.output_dir)
     accelerator = Accelerator(
         log_with="tensorboard", 

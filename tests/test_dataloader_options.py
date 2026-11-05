@@ -135,7 +135,11 @@ class DataLoaderOptionsTests(unittest.TestCase):
     def test_invalid_training_options_fail_before_initializing_resources(self):
         for name in ('train', 'peft_train'):
             module = importlib.import_module(name)
-            for option, value in (('--num_workers', '-1'), ('--prefetch_factor', '0')):
+            for option, value in (('--num_workers', '-1'), ('--prefetch_factor', '0'),
+                                  ('--batch_size', '0'), ('--batch_size', '-1'),
+                                  ('--iters', '0'), ('--iters', '-1'),
+                                  ('--log_interval', '0'), ('--log_interval', '-1'),
+                                  ('--save_interval', '0'), ('--save_interval', '-1')):
                 with self.subTest(entrypoint=name, option=option), \
                      patch.object(module, 'Accelerator', side_effect=AssertionError('resources initialized')) as accelerator, \
                      patch.object(module.XVLA, 'from_pretrained') as load:
