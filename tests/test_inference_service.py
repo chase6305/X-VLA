@@ -135,6 +135,8 @@ class StartupTests(unittest.TestCase):
             self.invoke()
         self.assertEqual(exit_info.exception.code, 1)
         self.model.run.assert_not_called()
+        self.load_processor.assert_not_called()
+        self.load_model.assert_not_called()
         self.assertEqual(self.info.read_text(), 'another server owns this')
 
     def test_runtime_info_creation_is_exclusive_even_after_existence_check(self):

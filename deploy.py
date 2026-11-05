@@ -41,6 +41,12 @@ def main():
 
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
+    info_path = osp.join(args.output_dir, "info.json")
+    if osp.exists(info_path):
+        print(f"❌ Error: {info_path} already exists. "
+              "This usually means another server is still running or the previous job did not clean up properly.")
+        print("👉 Please remove it manually or use a different --output_dir.")
+        sys.exit(1)
 
     print("🚀 Starting XVLA Inference Server...")
     print(f"🔹 Model Path  : {args.model_path}")
@@ -125,20 +131,12 @@ def main():
     # --------------------------------------------------------------------------
     # Write info.json for bookkeeping (safe version)
     # --------------------------------------------------------------------------
-    info_path = osp.join(args.output_dir, "info.json")
     infos = {
         "host": host,
         "port": args.port,
         "job_id": job_id,
         "node_list": node_list or "none",
     }
-
-    # --- Check existence before writing ---
-    if osp.exists(info_path):
-        print(f"❌ Error: {info_path} already exists. "
-            f"This usually means another server is still running or the previous job did not clean up properly.")
-        print("👉 Please remove it manually or use a different --output_dir.")
-        sys.exit(1)
 
     info_created = False
     try:
