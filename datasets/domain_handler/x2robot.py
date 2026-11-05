@@ -50,6 +50,7 @@ class X2RobotHandler(DomainHandler):
         all_action = {key: np.stack(all_action[key]) for key in self.ACTION_KEY}
         all_action = np.concatenate(
             [np.asarray(all_action[key]) for key in self.ACTION_KEY], axis=-1)
+        del action_data
         
         assert all_action.shape[0] == len(images[0]), \
             f"action length {all_action.shape[0]} != image length {len(images[0])}"

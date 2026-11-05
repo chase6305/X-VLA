@@ -47,15 +47,15 @@ def read_video_to_frames(path: str) -> np.ndarray:
             for f in packet.decode(): frames.append(f.to_ndarray(format="rgb24"))
     return np.stack(frames, axis=0)
 
-def read_parquet(path: str) -> dict:
+def read_parquet(path: str, columns: Sequence[str] | None = None) -> dict:
     path = str(path)
     if ("://" not in path and os.path.isfile(path)
             and type(fileio.get_file_backend(path, enable_singleton=True)) is LocalBackend):
         # Read just this file; directory partition names must not alter its schema.
         with pq.ParquetFile(path) as source:
-            return source.read().to_pydict()
+            return source.read(columns=columns).to_pydict()
     buf = io.BytesIO(read_bytes(path))
-    return pq.read_table(buf).to_pydict()
+    return pq.read_table(buf, columns=columns).to_pydict()
 
 def decode_image_from_bytes(x) -> Image.Image:
     if isinstance(x, (bytes, bytearray)): x = np.frombuffer(x, dtype=np.uint8)

@@ -4,6 +4,7 @@ import random
 import sys
 import tempfile
 import unittest
+import weakref
 from contextlib import ExitStack, nullcontext
 from pathlib import Path
 from unittest.mock import patch
@@ -227,6 +228,45 @@ class InstructionTests(unittest.TestCase):
                 for sample, values in zip((samples[0], samples[-1]), expected[kind]):
                     torch.testing.assert_close(sample['abs_trajectory'][:, 0], torch.tensor(values),
                                                rtol=1e-6, atol=1e-6)
+
+    def test_video_handlers_release_converted_raw_data_before_yielding(self):
+        class SourceDict(dict):
+            pass
+
+        class SourceList(list):
+            pass
+
+        for kind in ('agibot', 'lerobot', 'x2robot'):
+            with self.subTest(handler=kind), tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+                handler = self.video_handler(kind, directory, stack)
+                sources = []
+                if kind == 'x2robot':
+                    original_load = json.load
+
+                    def load(file):
+                        decoded = original_load(file)
+                        source = SourceList(decoded['data'])
+                        sources.append(weakref.ref(source))
+                        return dict(decoded, data=source)
+
+                    stack.enter_context(patch.object(x2robot.json, 'load', side_effect=load))
+                else:
+                    module = lerobot_agibot if kind == 'agibot' else lerobotv21
+                    data = module.read_parquet.return_value
+
+                    def read(*args, **kwargs):
+                        source = SourceDict(data)
+                        sources.append(weakref.ref(source))
+                        return source
+
+                    module.read_parquet.side_effect = read
+                iterator = handler.iter_episode(0, num_actions=3, training=False,
+                    image_aug=image_tensor, lang_aug_map=None)
+                stack.callback(iterator.close)
+                sample = next(iterator)
+                self.assertTrue(torch.isfinite(sample['abs_trajectory']).all())
+                self.assertEqual(len(sources), 1)
+                self.assertIsNone(sources[0]())
 
     def test_x2_restarts_do_not_mutate_relative_metadata_paths(self):
         for training in (False, True):

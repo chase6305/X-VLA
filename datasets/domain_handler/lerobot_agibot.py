@@ -37,12 +37,14 @@ class AGIBOTLeRobotHandler(DomainHandler):
         image_mask = torch.zeros(self.num_views, dtype=torch.bool)
         image_mask[:len(images)] = True
 
-        data = read_parquet(pq_path)
+        data = read_parquet(pq_path, columns=["actions.end.position",
+                            "actions.end.orientation", "actions.effector.position"])
         pos = np.asarray(data["actions.end.position"])     # [T,2,3]
         ori = np.asarray(data["actions.end.orientation"])  # [T,2,4]
         grip = np.asarray(data["actions.effector.position"])  # [T,2]
         left = np.concatenate([pos[:,0], quat_to_rotate6d(ori[:,0]), grip[:, :1]], -1)
         right = np.concatenate([pos[:,1], quat_to_rotate6d(ori[:,1]), grip[:, 1:]], -1)
+        del data, pos, ori, grip
 
         freq = 30.0; qdur = 4.0; t = np.arange(left.shape[0], dtype=np.float64) / freq
         L = interp1d(t, left,  axis=0, bounds_error=False, fill_value=(left[0], left[-1]))

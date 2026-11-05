@@ -68,6 +68,36 @@ class ParquetLoadingTests(unittest.TestCase):
                 utils.read_parquet(str(self.path))
         self.assertTrue(reader.closed)
 
+    def test_local_projection_preserves_requested_columns_and_types(self):
+        columns = ['timestamp', 'action.joints']
+        with patch.object(utils, 'read_bytes', side_effect=AssertionError('bulk parquet read')):
+            data = utils.read_parquet(str(self.path), columns=columns)
+        self.assertEqual(list(data), columns)
+        self.assertEqual(data, {key: self.expected[key] for key in columns})
+        self.assertIsInstance(data['timestamp'][0], datetime.datetime)
+
+    def test_virtual_projection_keeps_byte_backend_and_values(self):
+        with patch.object(utils, 'read_bytes', return_value=self.path.read_bytes()) as read:
+            data = utils.read_parquet('virtual://episode.parquet', columns=['action.joints'])
+        read.assert_called_once_with('virtual://episode.parquet')
+        self.assertEqual(data, {'action.joints': self.expected['action.joints']})
+
+    def test_projection_uses_custom_mapping_instead_of_physical_columns(self):
+        mapped = self.root / 'mapped.parquet'
+        expected = {'action.joints': [[.7], [.8]]}
+        pq.write_table(pa.table(dict(expected, extra=[10, 20])), mapped)
+        content = mapped.read_bytes()
+
+        class MappedLocalBackend(LocalBackend):
+            def get(self, filepath):
+                return content
+
+        with patch.dict(backend_io.backends), patch.dict(backend_io.prefix_to_backends), \
+             patch.dict(backend_io.backend_instances, clear=True):
+            register_backend('local', MappedLocalBackend, force=True, prefixes='')
+            data = utils.read_parquet(str(self.path), columns=['action.joints'])
+        self.assertEqual(data, expected)
+
 
 if __name__ == '__main__':
     unittest.main()

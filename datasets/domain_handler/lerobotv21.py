@@ -49,13 +49,14 @@ class LeRobotV21Handler(DomainHandler):
 
         image_mask = torch.zeros(self.num_views, dtype=torch.bool)
         image_mask[:len(images)] = True
-        data = read_parquet(data_path)
+        data = read_parquet(data_path, columns=self.ACTION_KEY)
         
         # do prefix sum for action.base_delta
         # data['action.base'] = np.cumsum(np.asarray(data['action.base_delta']), axis=0)
         
         all_action = np.concatenate(
             [np.asarray(data[action_key]) for action_key in self.ACTION_KEY], axis=-1)
+        del data
         all_action = np.concatenate(
             [all_action[:1], all_action[:-1]], axis=0
         ) # pad the first action
