@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -73,6 +74,49 @@ class RequestTests(unittest.TestCase):
         app = model.app
         model._build_app(processor)
         self.assertIs(model.app, app)
+
+    def test_sparse_camera_slots_are_rejected_before_processing(self):
+        for slots in ((1,), (2,), (0, 2)):
+            with self.subTest(slots=slots):
+                model = RequestPolicy()
+                process = Mock(wraps=processor)
+                model._build_app(process)
+                endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+                payload = {f'image{slot}': json_numpy.dumps(np.zeros((2, 2, 3), np.uint8))
+                           for slot in slots}
+                response = endpoint(payload)
+                self.assertEqual(response.status_code, 400)
+                process.assert_not_called()
+                self.assertIsNone(model.received)
+
+    def test_contiguous_camera_slots_preserve_camera_order(self):
+        for views in (1, 2, 3):
+            with self.subTest(views=views):
+                model = RequestPolicy()
+                process = Mock(wraps=processor)
+                model._build_app(process)
+                endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+                payload = {'proprio': json_numpy.dumps(np.zeros(20)),
+                           'language_instruction': 'move', 'domain_id': 0}
+                payload.update({f'image{slot}': json_numpy.dumps(
+                    np.full((2, 2, 3), 40*(slot+1), np.uint8)) for slot in range(views)})
+                self.assertEqual(endpoint(payload).status_code, 200)
+                images = process.call_args.args[0]
+                self.assertEqual([np.asarray(image)[0, 0, 0] for image in images],
+                                 [40*(slot+1) for slot in range(views)])
+
+    def test_invalid_camera_payload_is_not_silently_dropped(self):
+        model = RequestPolicy()
+        process = Mock(wraps=processor)
+        model._build_app(process)
+        endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+        payload = {'image0': json_numpy.dumps({'invalid': True}),
+                   'image1': json_numpy.dumps(np.zeros((2, 2, 3), np.uint8)),
+                   'proprio': json_numpy.dumps(np.zeros(20)),
+                   'language_instruction': 'move', 'domain_id': 0}
+        self.assertEqual(endpoint(payload).status_code, 400)
+        process.assert_not_called()
+        self.assertIsNone(model.received)
 
 
 class StartupModel:
@@ -180,6 +224,20 @@ class StartupTests(unittest.TestCase):
         self.model.run.side_effect = KeyboardInterrupt()
         self.invoke()
         self.assertFalse(self.info.exists())
+
+    def test_custom_sigterm_handler_is_preserved_in_main_and_worker_threads(self):
+        def custom_handler(signum, frame):
+            raise SystemExit(128 + signum)
+        original = signal.signal(signal.SIGTERM, custom_handler)
+        try:
+            self.invoke()
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pool.submit(self.invoke).result(timeout=10)
+            self.assertIs(signal.getsignal(signal.SIGTERM), custom_handler)
+            self.assertEqual(self.model.run.call_count, 2)
+            self.assertFalse(self.info.exists())
+        finally:
+            signal.signal(signal.SIGTERM, original)
 
 
 if __name__ == '__main__':

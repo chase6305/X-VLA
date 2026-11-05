@@ -146,6 +146,9 @@ The client communicates via HTTP POST, sending multimodal data (vision + languag
 | `domain_id`            | `int`                     | Identifier for the current robotic embodiment/domain. |
 | `steps`                | `int`                     | denoising steps for flow-matching based generation (e.g., 10).         |
 
+Supply camera slots consecutively from `image0`. Missing intermediate slots or
+invalid image payloads return HTTP 400 so that camera identities are preserved.
+
 #### Example Client Code
 
 ```python

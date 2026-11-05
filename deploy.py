@@ -26,7 +26,7 @@ import signal
 import threading
 
 
-def _exit_on_sigterm(signum, frame):
+def _exit_on_sigterm(signum, _frame):
     # Uvicorn re-raises shutdown signals after restoring the previous handlers.
     raise SystemExit(128 + signum)
 

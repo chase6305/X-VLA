@@ -237,8 +237,11 @@ class XVLA(PreTrainedModel):
                 self.eval()
                 # Decode up to 3 image inputs
                 images = []
-                for key in ("image0", "image1", "image2"):
-                    if key not in payload: continue
+                camera_keys = ("image0", "image1", "image2")
+                image_keys = [key for key in camera_keys if key in payload]
+                if image_keys != list(camera_keys[:len(image_keys)]):
+                    return JSONResponse({"error": "Camera slots must be consecutive, starting with image0."}, status_code=400)
+                for key in image_keys:
                     v = json_numpy.loads(payload[key])
                     if isinstance(v, np.ndarray):
                         if v.ndim == 1:  # encoded bytes
@@ -248,6 +251,8 @@ class XVLA(PreTrainedModel):
                         images.append(Image.fromarray(np.array(v)))
                     elif isinstance(v, str):
                         images.append(Image.open(v))
+                    else:
+                        return JSONResponse({"error": f"Invalid image payload for {key}."}, status_code=400)
                 if not images:
                     return JSONResponse({"error": "No valid images found."}, status_code=400)
 
