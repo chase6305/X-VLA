@@ -22,6 +22,13 @@ import torch
 from models.modeling_xvla import XVLA
 from models.processing_xvla import XVLAProcessor
 import sys
+import signal
+import threading
+
+
+def _exit_on_sigterm(signum, frame):
+    # Uvicorn re-raises shutdown signals after restoring the previous handlers.
+    raise SystemExit(128 + signum)
 
 def main():
     parser = argparse.ArgumentParser(description="Launch XVLA inference FastAPI server")
@@ -138,6 +145,9 @@ def main():
         "node_list": node_list or "none",
     }
 
+    previous_sigterm = None
+    if threading.current_thread() is threading.main_thread():
+        previous_sigterm = signal.signal(signal.SIGTERM, _exit_on_sigterm)
     info_created = False
     try:
         # --- Write safely ---
@@ -162,6 +172,8 @@ def main():
             print(f"❌ Server failed to start: {e}")
             sys.exit(1)
     finally:
+        if previous_sigterm is not None:
+            signal.signal(signal.SIGTERM, previous_sigterm)
         if info_created:
             try:
                 os.remove(info_path)

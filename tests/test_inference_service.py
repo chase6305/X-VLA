@@ -1,5 +1,6 @@
 import io
 import json
+import signal
 import sys
 import tempfile
 import unittest
@@ -92,13 +93,17 @@ class StartupTests(unittest.TestCase):
     def invoke(self, processor_error=None, model_error=None):
         argv = ['deploy.py', '--model_path', 'local-checkpoint', '--device', 'cpu',
                 '--output_dir', self.directory.name, '--disable_slurm']
-        with patch.object(sys, 'argv', argv), redirect_stdout(io.StringIO()), \
-             patch.object(deploy.XVLAProcessor, 'from_pretrained', return_value=processor,
-                          side_effect=processor_error) as load_processor, \
-             patch.object(deploy.XVLA, 'from_pretrained', return_value=self.model,
-                          side_effect=model_error) as load_model:
-            self.load_processor, self.load_model = load_processor, load_model
-            deploy.main()
+        previous_sigterm = signal.getsignal(signal.SIGTERM)
+        try:
+            with patch.object(sys, 'argv', argv), redirect_stdout(io.StringIO()), \
+                 patch.object(deploy.XVLAProcessor, 'from_pretrained', return_value=processor,
+                              side_effect=processor_error) as load_processor, \
+                 patch.object(deploy.XVLA, 'from_pretrained', return_value=self.model,
+                              side_effect=model_error) as load_model:
+                self.load_processor, self.load_model = load_processor, load_model
+                deploy.main()
+        finally:
+            self.assertIs(signal.getsignal(signal.SIGTERM), previous_sigterm)
 
     def test_processor_failure_exits_nonzero_without_loading_model(self):
         with self.assertRaises(SystemExit) as exit_info:
