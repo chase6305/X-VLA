@@ -266,6 +266,11 @@ Both full-model and LoRA checkpoint directories include the processor configurat
 image preprocessing settings and tokenizer. When deploying an adapter with a custom
 processor, pass its checkpoint directory via `--processor_path` alongside `--LoRA_path`.
 
+These exports do not include optimizer, RNG or data-iterator state. The saved
+`global_step` is informational: both training entrypoints start their optimizer
+and schedule from step zero, so loading weights does not resume the original
+training trajectory.
+
 ```bash
 accelerate launch \
     --mixed_precision bf16 \
