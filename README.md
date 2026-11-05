@@ -167,9 +167,9 @@ import json_numpy
 server_url = "http://localhost:8000/act"
 timeout = 5
 
-# Prepare inputs
-# Match the checkpoint's state layout (20 channels for EE6D).
+# Prepare inputs for an ee6d checkpoint (use your checkpoint's state layout).
 proprio = np.zeros(20, dtype=np.float32)
+proprio[[3, 6]] = 1.0  # Identity 6D rotation for the left arm; right arm is unused.
 image = np.zeros((256, 256, 3), dtype=np.uint8)
 instruction = "Move the gripper to the target position"
 
