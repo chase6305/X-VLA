@@ -263,11 +263,19 @@ class XVLA(PreTrainedModel):
 
                 # Build proprio/domain tensors
                 proprio = torch.tensor(np.asarray(json_numpy.loads(payload["proprio"])))
-                domain_id = torch.tensor([int(payload["domain_id"])], dtype=torch.long)
+                domain = int(payload["domain_id"])
+                if not 0 <= domain < self.config.num_domains:
+                    return JSONResponse({"error": "domain_id is outside the checkpoint's domain range."}, status_code=400)
+                domain_id = torch.tensor([domain], dtype=torch.long)
 
                 # Align to model's device/dtype
                 device = next(self.parameters()).device
                 dtype = next(self.parameters()).dtype
+                if proprio.ndim != 1 or proprio.is_complex():
+                    return JSONResponse({"error": "proprio must be a real state vector."}, status_code=400)
+                proprio = proprio.to(dtype=dtype)
+                if not torch.isfinite(proprio).all():
+                    return JSONResponse({"error": "proprio must be finite in the model's dtype."}, status_code=400)
 
                 def to_model(t: torch.Tensor) -> torch.Tensor:
                     if not isinstance(t, torch.Tensor):
@@ -277,7 +285,7 @@ class XVLA(PreTrainedModel):
 
                 inputs = {k: to_model(v) for k, v in inputs.items()}
                 inputs.update({
-                    "proprio": proprio.unsqueeze(0).to(device=device, dtype=dtype),
+                    "proprio": proprio.unsqueeze(0).to(device=device),
                     "domain_id": domain_id.to(device),
                 })
 

@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stdout
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import json_numpy
@@ -25,6 +26,7 @@ class RequestPolicy(torch.nn.Module):
         self.weight = torch.nn.Parameter(torch.zeros(1, dtype=dtype))
         self.app = None
         self.received = None
+        self.config = SimpleNamespace(num_domains=2)
 
     def generate_actions(self, **inputs):
         self.received = inputs
@@ -40,6 +42,42 @@ def processor(images, instruction):
 
 
 class RequestTests(unittest.TestCase):
+    @staticmethod
+    def payload(state, domain_id=0):
+        return {'proprio': json_numpy.dumps(state), 'domain_id': domain_id,
+                'language_instruction': 'move',
+                'image0': json_numpy.dumps(np.zeros((2, 2, 3), np.uint8))}
+
+    def test_domain_bounds_are_checked_before_inference_and_valid_requests_still_work(self):
+        model = RequestPolicy()
+        model._build_app(processor)
+        endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+        for domain in (-1, model.config.num_domains):
+            with self.subTest(domain=domain):
+                response = endpoint(self.payload(np.zeros(20), domain))
+                self.assertEqual(response.status_code, 400)
+                self.assertIsNone(model.received)
+        self.assertEqual(endpoint(self.payload(np.zeros(20), 1)).status_code, 200)
+        self.assertEqual(model.received['domain_id'].item(), 1)
+
+    def test_state_must_be_a_real_vector_before_inference(self):
+        for state in (np.array(0.), np.zeros((1, 20)), np.ones(20, np.complex64)):
+            with self.subTest(shape=state.shape, dtype=state.dtype):
+                model = RequestPolicy()
+                model._build_app(processor)
+                endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+                self.assertEqual(endpoint(self.payload(state)).status_code, 400)
+                self.assertIsNone(model.received)
+
+    def test_state_must_be_finite_after_conversion_to_model_dtype(self):
+        for value in (np.nan, np.inf, -np.inf, 1e300):
+            with self.subTest(value=value):
+                model = RequestPolicy()
+                model._build_app(processor)
+                endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+                self.assertEqual(endpoint(self.payload(np.full(20, value))).status_code, 400)
+                self.assertIsNone(model.received)
+
     def test_continuous_state_uses_model_dtype_for_numeric_payloads(self):
         for model_dtype in (torch.float32, torch.float64):
             for input_dtype in (np.float32, np.float64, np.int32, np.int64):
