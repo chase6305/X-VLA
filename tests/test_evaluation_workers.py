@@ -46,6 +46,16 @@ class EvaluationWorkerTests(unittest.TestCase):
         return InfiniteDataReader(str(self.meta), num_actions=2, num_views=1,
                                   training=training)
 
+    def split_reader(self):
+        original = json.loads(self.meta.read_text())
+        directory = self.root / 'split'
+        directory.mkdir(exist_ok=True)
+        for index, path in enumerate(original['datalist']):
+            meta = dict(original, dataset_name=f'Bridge-part-{index}', robot_type='Bridge',
+                        datalist=[path])
+            (directory / f'{index}.json').write_text(json.dumps(meta))
+        return InfiniteDataReader(str(directory), num_actions=2, num_views=1, training=False)
+
     @staticmethod
     def identifiers(samples):
         return [int(s['proprio'][0]) for s in samples]
@@ -77,18 +87,30 @@ class EvaluationWorkerTests(unittest.TestCase):
             sample = next(iter(self.reader(training=True)))
         self.assertEqual(sample['action'].shape, (2, 20))
 
+    def test_small_sources_are_distributed_across_workers_without_duplicates(self):
+        reader = self.split_reader()
+        reference = self.identifiers(reader)
+        partitions = []
+        for worker_id in range(3):
+            worker = SimpleNamespace(id=worker_id, num_workers=3)
+            with patch.object(reader_module, 'get_worker_info', return_value=worker):
+                partitions.append(self.identifiers(reader))
+        self.assertEqual(partitions, [reference[:4], reference[4:], []])
+
     def test_real_workers_finish_without_duplicate_or_missing_samples(self):
         methods = [method for method in ('fork', 'spawn')
                    if method in multiprocessing.get_all_start_methods()]
         for method in methods:
-            with self.subTest(context=method):
-                loader = DataLoader(self.reader(), batch_size=None, num_workers=3,
-                                    multiprocessing_context=method, timeout=45,
-                                    pin_memory=False)
-                identifiers = self.identifiers(loader)
-                self.assertEqual(sorted(identifiers),
-                                 [0, 1, 2, 3, 100, 101, 102, 103])
-                self.assertEqual(len(identifiers), len(set(identifiers)))
+            for split in (False, True):
+                with self.subTest(context=method, split_sources=split):
+                    reader = self.split_reader() if split else self.reader()
+                    loader = DataLoader(reader, batch_size=None, num_workers=3,
+                                        multiprocessing_context=method, timeout=45,
+                                        pin_memory=False)
+                    identifiers = self.identifiers(loader)
+                    self.assertEqual(sorted(identifiers),
+                                     [0, 1, 2, 3, 100, 101, 102, 103])
+                    self.assertEqual(len(identifiers), len(set(identifiers)))
 
 
 if __name__ == '__main__':

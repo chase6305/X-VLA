@@ -93,19 +93,22 @@ class InfiniteDataReader(IterableDataset):
         ]
         self.image_aug = transforms.Compose(self.image_aug)
 
-    def _iter_one_dataset(self, dataset_name: str) -> Iterable[dict]:
+    def _iter_one_dataset(self, dataset_name: str, trajectory_offset: int = 0) -> Iterable[dict]:
         meta = self.metas[dataset_name]
         if 'robot_type' in meta.keys(): robot_type = meta['robot_type']
         else: robot_type = dataset_name
         Handler = get_handler_cls(robot_type)
 
         while True:
-            traj_indices = list(range(len(meta["datalist"])))
-            if self.training: random.shuffle(traj_indices)
+            traj_indices: List[int] | range = range(len(meta["datalist"]))
+            if self.training:
+                traj_indices = list(traj_indices)
+                random.shuffle(traj_indices)
             else:
                 worker = get_worker_info()
                 if worker is not None:
-                    traj_indices = traj_indices[worker.id::worker.num_workers]
+                    start = (worker.id - trajectory_offset) % worker.num_workers
+                    traj_indices = traj_indices[start::worker.num_workers]
             handler = Handler(meta=meta, num_views=self.num_views)
             produced_sample = False
             for traj_idx in traj_indices:
@@ -135,7 +138,10 @@ class InfiniteDataReader(IterableDataset):
     def __iter__(self):
         names = list(self.metas.keys())
         if not self.training: 
-            for n in names: yield from self._iter_one_dataset(n)
+            trajectory_offset = 0
+            for n in names:
+                yield from self._iter_one_dataset(n, trajectory_offset=trajectory_offset)
+                trajectory_offset += len(self.metas[n]['datalist'])
         else:
             #names = names * 2 # increase the dataset sampling frequency
             gens = [iter(self._iter_one_dataset(n)) for n in names]
