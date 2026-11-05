@@ -109,17 +109,18 @@ class XVLA(PreTrainedModel):
     ) -> Dict[str, torch.Tensor]:
         """
         Encode text + multi-view images via Florence2 encoder.
+        Each sample requires a valid primary view in slot zero.
 
         Returns:
           { "vlm_features": [B, T_enc, D], "aux_visual_inputs": [B, (V-1)*N, D] }
         """
         B, V = pixel_values.shape[:2]
-        flat_mask = image_mask.view(-1).to(torch.bool)         # [B*V]
+        if B == 0 or V == 0 or image_mask.shape != (B, V):
+            raise ValueError("image_mask must match a non-empty image batch and view axis.")
+        if not image_mask[:, 0].to(torch.bool).all():
+            raise ValueError("Each sample requires a valid primary image view in slot zero.")
+        flat_mask = image_mask.reshape(-1).to(torch.bool)      # [B*V]
         flat_images = pixel_values.flatten(0, 1)                # [B*V, C, H, W]
-
-        num_valid = int(flat_mask.sum().item())
-        if num_valid == 0:
-            raise ValueError("At least one image view must be valid per batch.")
 
         valid_images = flat_images[flat_mask]                   # [#valid, C, H, W]
         valid_feats = self.vlm._encode_image(valid_images)      # [#valid, N, D]
