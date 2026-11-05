@@ -118,7 +118,7 @@ class AGIWolrdHandler(DomainHandler):  # Note: "Wolrd" looks like a typo; kept f
         gripper_change_idx = np.flatnonzero(chg)
         
         # Domain instruction
-        ins = DOMAIN2INS[self.meta['dataset_name']]
+        base_instruction = DOMAIN2INS[self.meta['dataset_name']]
 
         # Build (start, end) segment list; allow external split_list if provided
         
@@ -152,7 +152,8 @@ class AGIWolrdHandler(DomainHandler):  # Note: "Wolrd" looks like a typo; kept f
             for idx in index_list:
                 # Skip near-static consecutive frames (by EE6D)
                 if np.abs(abs_ee6d[idx + 1] - abs_ee6d[idx]).max() < 5e-4: continue
-                
+
+                ins = base_instruction
                 # Tricks for pour water
                 if self.meta['dataset_name'] == 'agiworld-on-site-pour':
                     if idx > len(abs_joint) // 2: 

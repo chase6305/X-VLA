@@ -62,9 +62,11 @@ class AGIBOTLeRobotHandler(DomainHandler):
             q = np.linspace(cur, min(cur + qdur, float(t.max())), num_actions + 1, dtype=np.float32)
             lseq, rseq = torch.tensor(L(q)), torch.tensor(R(q))
             if (lseq[1]-lseq[0]).abs().max() < 1e-5 and (rseq[1]-rseq[0]).abs().max() < 1e-5:continue
-            if lang_aug_map is not None and ins in lang_aug_map: ins = random.choice(lang_aug_map[ins])
+            sample_ins = ins
+            if training and lang_aug_map and ins in lang_aug_map:
+                sample_ins = random.choice(lang_aug_map[ins])
             yield {
-                "language_instruction": ins,
+                "language_instruction": sample_ins,
                 "image_input": image_input,
                 "image_mask": image_mask,
                 "abs_trajectory": torch.cat([lseq, rseq], -1).float(),

@@ -84,14 +84,16 @@ class InfiniteDataReader(IterableDataset):
 
     def _iter_one_dataset(self, dataset_name: str) -> Iterable[dict]:
         meta = self.metas[dataset_name]
-        traj_indices = list(range(len(meta["datalist"])))
-        if self.training: random.shuffle(traj_indices)
-        
         if 'robot_type' in meta.keys(): robot_type = meta['robot_type']
         else: robot_type = dataset_name
         Handler = get_handler_cls(robot_type)
-        handler = Handler(meta=meta, num_views=self.num_views)
-        for traj_idx in traj_indices:
+
+        while True:
+            traj_indices = list(range(len(meta["datalist"])))
+            if self.training: random.shuffle(traj_indices)
+            handler = Handler(meta=meta, num_views=self.num_views)
+            produced_sample = False
+            for traj_idx in traj_indices:
                 for sample in handler.iter_episode(
                     traj_idx,
                     num_actions=self.num_actions,
@@ -104,8 +106,15 @@ class InfiniteDataReader(IterableDataset):
                     idx_for_delta = sample.pop("idx_for_delta", [])
                     idx_for_mask_proprio = sample.pop("idx_for_mask_proprio", [])
                     sample.update(action_slice(sample.pop("abs_trajectory", None), idx_for_delta, idx_for_mask_proprio))
+                    produced_sample = True
                     yield sample
-        if self.training: yield from self._iter_one_dataset(dataset_name)
+            if not self.training:
+                return
+            if not produced_sample:
+                raise RuntimeError(
+                    f"Dataset {dataset_name!r} produced no valid samples in a complete pass "
+                    f"over {len(traj_indices)} trajectories. Check episode lengths and filtering."
+                )
 
 
     def __iter__(self):

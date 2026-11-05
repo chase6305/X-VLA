@@ -157,15 +157,16 @@ class BaseHDF5Handler(DomainHandler):
             if (lseq[1] - lseq[0]).abs().max() < 1e-5 and (rseq[1] - rseq[0]).abs().max() < 1e-5: continue
             
             # Language augmentation
+            sample_ins = ins
             if training and lang_aug_map and ins in lang_aug_map:
-                ins = random.choice(lang_aug_map[ins])
+                sample_ins = random.choice(lang_aug_map[ins])
             
             imgs = [image_aug(self._pil_from_arr(images[v][idx])) for v in range(V)]
             while len(imgs) < self.num_views: imgs.append(torch.zeros_like(imgs[0]))
             image_input = torch.stack(imgs, dim=0)
 
             yield {
-                "language_instruction": ins,
+                "language_instruction": sample_ins,
                 "image_input": image_input,
                 "image_mask": image_mask,
                 "abs_trajectory": torch.cat([lseq, rseq], -1).float()

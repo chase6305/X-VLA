@@ -75,10 +75,12 @@ class X2RobotHandler(DomainHandler):
                 torch.zeros((cur_action.shape[0], 20 - cur_action.shape[1]))
             ], dim=-1)
             
-            if lang_aug_map is not None and ins in lang_aug_map: ins = random.choice(lang_aug_map[ins])
+            sample_ins = ins
+            if training and lang_aug_map and ins in lang_aug_map:
+                sample_ins = random.choice(lang_aug_map[ins])
             
             yield {
-                "language_instruction": ins,
+                "language_instruction": sample_ins,
                 "image_input": image_input,
                 "image_mask": image_mask,
                 "abs_trajectory": cur_action.float(),
