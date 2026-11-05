@@ -282,6 +282,11 @@ class AutoActionSpace(BaseActionSpace):
 
     def __init__(self, real_dim: int, max_dim: int = 20):
         super().__init__()
+        for name, value in (("real_dim", real_dim), ("max_dim", max_dim)):
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer, got {value!r}")
+        if real_dim > max_dim:
+            raise ValueError(f"real_dim={real_dim} must not exceed max_dim={max_dim}")
         self.real_dim = real_dim
         self.dim_action = max_dim  # Model-facing dimension
         self.mse = nn.MSELoss()
@@ -335,8 +340,15 @@ class AutoActionSpace(BaseActionSpace):
 
     def preprocess(self, proprio: torch.Tensor, action: torch.Tensor, mode: str = "train"):
         """
-        Pad action from real_dim to max_dim for the model.
+        Pad state and action to the model width, preserving all state channels.
         """
+        if proprio is not None:
+            if proprio.size(-1) > self.dim_action:
+                raise ValueError(
+                    f"Proprio dimension {proprio.size(-1)} exceeds model width {self.dim_action}."
+                )
+            if proprio.size(-1) < self.dim_action:
+                proprio = nn.functional.pad(proprio, (0, self.dim_action - proprio.size(-1)))
         return proprio, self._pad_to_model_dim(action)
 
     def postprocess(self, action: torch.Tensor) -> torch.Tensor:
