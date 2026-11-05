@@ -1,7 +1,10 @@
 import json
+from contextlib import ExitStack
+import importlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import numpy as np
 import torch
@@ -109,6 +112,58 @@ class ProcessorTests(unittest.TestCase):
         processor = self.processor()
         self.assertEqual(set(processor(language_instruction='move')), {'input_ids'})
         self.assertEqual(set(processor(images=[self.image])), {'image_input', 'image_mask'})
+
+    def run_export(self, entrypoint, destination, processor, main_process=True):
+        module = importlib.import_module(entrypoint)
+        model = Mock(num_actions=30, action_mode='ee6d',
+                     return_value={'stub_loss': torch.tensor(1.)})
+        model.save_pretrained.side_effect = lambda path, **kwargs: Path(path).mkdir(parents=True)
+        optim = Mock(param_groups=[{'name': 'vlm', 'lr': 0.},
+                                   {'name': 'transformer_core', 'lr': 0.}])
+        accelerator = Mock(process_index=0, num_processes=1, is_main_process=main_process)
+        accelerator.prepare.side_effect = lambda *objects: objects
+        accelerator.unwrap_model.return_value = model
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(module, 'Accelerator', return_value=accelerator))
+            stack.enter_context(patch.object(module, 'get_logger', return_value=Mock()))
+            stack.enter_context(patch.object(module, 'set_seed'))
+            stack.enter_context(patch.object(module.XVLA, 'from_pretrained', return_value=model))
+            stack.enter_context(patch.object(module.XVLAProcessor, 'from_pretrained', return_value=processor))
+            stack.enter_context(patch.object(module, 'build_optimizer', return_value=optim))
+            stack.enter_context(patch.object(module, 'update_group_lrs'))
+            stack.enter_context(patch.object(module, 'create_dataloader',
+                return_value=[{'language_instruction': ['move']} for _ in range(2)]))
+            stack.enter_context(patch.object(torch.Tensor, 'cuda', lambda tensor, **kwargs: tensor))
+            if entrypoint == 'peft_train':
+                stack.enter_context(patch.object(module, 'get_peft_model', return_value=model))
+            args = module.get_args_parser().parse_args([
+                '--models', 'unused', '--train_metas_path', 'unused', '--iters', '2',
+                '--save_interval', '1', '--output_dir', str(destination), '--max_grad_norm', '0'])
+            module.main(args)
+
+    def test_full_and_adapter_exports_restore_processor_at_periodic_and_final_saves(self):
+        processor = self.processor(num_views=2, language_max_length=16)
+        expected = processor([self.image], 'move')
+        for entrypoint in ('train', 'peft_train'):
+            destination = self.root / entrypoint
+            self.run_export(entrypoint, destination, processor)
+            for step in (1, 2):
+                with self.subTest(entrypoint=entrypoint, checkpoint=step):
+                    checkpoint = destination / f'ckpt-{step}'
+                    restored = XVLAProcessor.from_pretrained(checkpoint, local_files_only=True)
+                    self.assertEqual((restored.num_views, restored.language_max_length), (2, 16))
+                    actual = restored([self.image], 'move')
+                    for key in expected:
+                        torch.testing.assert_close(actual[key], expected[key], rtol=0, atol=0)
+                    self.assertEqual(json.loads((checkpoint / 'state.json').read_text())['global_step'], step)
+
+    def test_non_main_training_process_does_not_write_export_files(self):
+        processor = self.processor(num_views=2, language_max_length=16)
+        for entrypoint in ('train', 'peft_train'):
+            with self.subTest(entrypoint=entrypoint):
+                destination = self.root / f'worker-{entrypoint}'
+                self.run_export(entrypoint, destination, processor, main_process=False)
+                self.assertFalse(destination.exists())
 
 
 if __name__ == '__main__':

@@ -286,6 +286,10 @@ accelerate launch \
 | `--freeze_steps`     | Steps to freeze backbone               |
 | `--warmup_steps`     | Warmup iterations                      |
 
+Both full-model and LoRA checkpoint directories include the processor configuration,
+image preprocessing settings and tokenizer. When deploying an adapter with a custom
+processor, pass its checkpoint directory via `--processor_path` alongside `--LoRA_path`.
+
 ---
 
 

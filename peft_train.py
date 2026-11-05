@@ -278,6 +278,7 @@ def main(args):
                 save_dir = os.path.join(output_dir, f"ckpt-{global_step}")
                 accelerator.print(f"💾 Saving model to {save_dir}")
                 accelerator.unwrap_model(model).save_pretrained(save_dir, safe_serialization=True)
+                processor.save_pretrained(save_dir)
                 with open(os.path.join(save_dir, "state.json"), "w") as f:
                     json.dump({"global_step": global_step}, f)
         
