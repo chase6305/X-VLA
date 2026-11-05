@@ -2,6 +2,7 @@ import ast
 import collections
 import json_numpy
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 from unittest.mock import Mock
 
@@ -103,6 +104,19 @@ class CalvinActionQueueTests(unittest.TestCase):
             self.rollout('second')
         self.assertEqual(len(self.env.actions), 1)
         self.assertEqual(self.model.action_plan, [])
+
+    def test_rollout_remains_compatible_with_policies_without_an_action_queue(self):
+        for attributes in ({}, {'action_plan': None}):
+            with self.subTest(attributes=attributes):
+                action = (np.zeros(3), np.array([0., 0., 0., 1.]), 1)
+                policy = SimpleNamespace(step=Mock(return_value=action), **attributes)
+                success, frames, instruction = self.ns['rollout'](
+                    self.env, policy, self.oracle, 'first', self.annotations,
+                    collections.defaultdict(list), False)
+                self.assertTrue(success)
+                self.assertEqual(len(frames), 1)
+                policy.step.assert_called_once()
+                self.ns['requests'].post.assert_not_called()
 
 
 if __name__ == '__main__':
