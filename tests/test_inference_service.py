@@ -157,6 +157,18 @@ class StartupTests(unittest.TestCase):
                 self.assertIn(exit_info.exception.code, (1, 2))
                 self.assertFalse(self.info.exists())
 
+    def test_partial_runtime_info_is_removed_when_writing_fails(self):
+        for error in (OSError('disk full'), KeyboardInterrupt()):
+            with self.subTest(error=error):
+                def failed_write(info, stream, **kwargs):
+                    stream.write('{')
+                    raise error
+                with patch.object(deploy.json, 'dump', side_effect=failed_write):
+                    with self.assertRaises((SystemExit, KeyboardInterrupt)):
+                        self.invoke()
+                self.model.run.assert_not_called()
+                self.assertFalse(self.info.exists())
+
     def test_keyboard_interrupt_removes_runtime_info(self):
         self.model.run.side_effect = KeyboardInterrupt()
         self.invoke()

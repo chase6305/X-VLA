@@ -140,31 +140,35 @@ def main():
         print("👉 Please remove it manually or use a different --output_dir.")
         sys.exit(1)
 
-    # --- Write safely ---
+    info_created = False
     try:
-        with open(info_path, "x") as f:
-            json.dump(infos, f, indent=4)
-        print(f"📝 Server info written to {info_path}")
-    except Exception as e:
-        print(f"⚠️ Failed to write {info_path}: {e}")
-        sys.exit(1)
-
-    # --------------------------------------------------------------------------
-    # Launch FastAPI server
-    # --------------------------------------------------------------------------
-    print(f"\n🌐 Launching FastAPI service at http://{host}:{args.port} ...")
-    try:
-        model.run(processor=processor, host=host, port=args.port)
-    except KeyboardInterrupt:
-        print("\n🛑 Server stopped manually.")
-    except Exception as e:
-        print(f"❌ Server failed to start: {e}")
-        sys.exit(1)
-    finally:
+        # --- Write safely ---
         try:
-            os.remove(info_path)
-        except FileNotFoundError:
-            pass
+            with open(info_path, "x") as f:
+                info_created = True
+                json.dump(infos, f, indent=4)
+            print(f"📝 Server info written to {info_path}")
+        except Exception as e:
+            print(f"⚠️ Failed to write {info_path}: {e}")
+            sys.exit(1)
+
+        # ----------------------------------------------------------------------
+        # Launch FastAPI server
+        # ----------------------------------------------------------------------
+        print(f"\n🌐 Launching FastAPI service at http://{host}:{args.port} ...")
+        try:
+            model.run(processor=processor, host=host, port=args.port)
+        except KeyboardInterrupt:
+            print("\n🛑 Server stopped manually.")
+        except Exception as e:
+            print(f"❌ Server failed to start: {e}")
+            sys.exit(1)
+    finally:
+        if info_created:
+            try:
+                os.remove(info_path)
+            except FileNotFoundError:
+                pass
 
 
 if __name__ == "__main__":
