@@ -1,3 +1,4 @@
+import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -54,10 +55,12 @@ class CompressedImageTests(unittest.TestCase):
         np.testing.assert_array_equal(captured[1], rgb)
 
     def test_invalid_encoded_image_is_rejected_before_processing(self):
-        with patch('models.modeling_xvla.logging.error'):
+        with patch('models.modeling_xvla.logging.error') as log_error:
             response = self.request(np.array([1, 2, 3], np.uint8))
         self.assertEqual(response.status_code, 400)
+        self.assertIn('Could not decode image0', json.loads(response.body)['error'])
         self.processor.assert_not_called()
+        log_error.assert_not_called()
 
 
 if __name__ == '__main__':
