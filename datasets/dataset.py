@@ -34,7 +34,10 @@ class _ProcessorImageTransform:
 
     def __call__(self, image):
         image = self.augmentation(image)
-        return self.image_processor([image], return_tensors="pt")["pixel_values"][0]
+        pixels = self.image_processor([image], return_tensors="pt")["pixel_values"][0]
+        if pixels.is_complex():
+            raise ValueError("Image processors must return real-valued pixels.")
+        return pixels if pixels.is_floating_point() else pixels.float()
 
 
 class InfiniteDataReader(IterableDataset):

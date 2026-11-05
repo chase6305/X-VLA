@@ -67,6 +67,32 @@ class ProcessorImageLoadingTests(unittest.TestCase):
                 InfiniteDataReader('unused', image_processor=object())
             inspect_path.assert_not_called()
 
+    def test_unscaled_reader_pixels_are_float_without_value_changes(self):
+        self.processor.do_rescale = False
+        self.processor.do_normalize = False
+        expected = self.processor([Image.fromarray(self.rgb)], return_tensors='pt')['pixel_values'][0]
+        self.assertEqual(expected.dtype, torch.uint8)
+        loader = create_dataloader(batch_size=2, metas_path=str(self.meta), num_actions=3,
+            training=False, action_mode='ee6d', num_workers=0, num_views=2, image_processor=self.processor)
+        batch = next(iter(loader))
+        self.assertEqual(batch['image_input'].dtype, torch.float32)
+        torch.testing.assert_close(batch['image_input'][0, 0], expected.float(), rtol=0, atol=0)
+        self.assertEqual(batch['image_input'][:, 1].count_nonzero().item(), 0)
+
+    def test_custom_reader_keeps_float_dtypes_and_rejects_complex_pixels(self):
+        reader = InfiniteDataReader(str(self.meta), training=False, image_processor=self.processor)
+        for dtype in (torch.float16, torch.float32, torch.float64):
+            pixels = torch.ones(1, 3, 8, 8, dtype=dtype)
+            with self.subTest(dtype=dtype), patch.object(self.processor, 'preprocess',
+                                                       return_value={'pixel_values': pixels}):
+                output = reader.image_aug(Image.fromarray(self.rgb))
+                self.assertEqual(output.dtype, dtype)
+                torch.testing.assert_close(output, pixels[0], rtol=0, atol=0)
+        with patch.object(self.processor, 'preprocess',
+                          return_value={'pixel_values': torch.ones(1, 3, 8, 8, dtype=torch.complex64)}):
+            with self.assertRaisesRegex(ValueError, 'real'):
+                reader.image_aug(Image.fromarray(self.rgb))
+
 
 if __name__ == '__main__':
     unittest.main()
