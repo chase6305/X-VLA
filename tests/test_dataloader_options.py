@@ -128,6 +128,20 @@ class DataLoaderOptionsTests(unittest.TestCase):
                 self.assertEqual(loader.call_args.kwargs['prefetch_factor'], 5)
                 self.assertEqual(loader.call_args.kwargs['num_views'], 2)
 
+    def test_invalid_training_options_fail_before_initializing_resources(self):
+        for name in ('train', 'peft_train'):
+            module = importlib.import_module(name)
+            for option, value in (('--num_workers', '-1'), ('--prefetch_factor', '0')):
+                with self.subTest(entrypoint=name, option=option), \
+                     patch.object(module, 'Accelerator', side_effect=AssertionError('resources initialized')) as accelerator, \
+                     patch.object(module.XVLA, 'from_pretrained') as load:
+                    args = module.get_args_parser().parse_args([
+                        '--models', 'unused', '--train_metas_path', 'unused', option, value])
+                    with self.assertRaises(ValueError):
+                        module.main(args)
+                    accelerator.assert_not_called()
+                    load.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

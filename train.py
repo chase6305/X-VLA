@@ -178,6 +178,10 @@ def update_group_lrs(optim, step, args):
 # Main Training
 # ============================================================
 def main(args):
+    if args.num_workers < 0:
+        raise ValueError("num_workers must be non-negative")
+    if args.prefetch_factor < 1:
+        raise ValueError("prefetch_factor must be positive")
     output_dir = Path(args.output_dir)
     accelerator = Accelerator(
         log_with="tensorboard", 
