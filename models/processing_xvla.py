@@ -57,8 +57,10 @@ class XVLAProcessor(ProcessorMixin):
     attributes = ["image_processor", "tokenizer"]
     image_processor_class = "AutoImageProcessor"
     tokenizer_class = ("BartTokenizer", "BartTokenizerFast")
+    valid_kwargs = ["num_views", "language_max_length"]
 
-    def __init__(self, image_processor=None, tokenizer=None):
+    def __init__(self, image_processor=None, tokenizer=None, num_views: int = 3,
+                 language_max_length: int = 50):
         """
         Initialize XVLAProcessor.
 
@@ -68,7 +70,16 @@ class XVLAProcessor(ProcessorMixin):
             The image processor used to normalize/resize images.
         tokenizer : PreTrainedTokenizer, optional
             The tokenizer used for text tokenization.
+        num_views : int, optional
+            Number of camera slots per sample. Defaults to 3.
+        language_max_length : int, optional
+            Padded language token length. Defaults to 50.
         """
+        for name, value in (("num_views", num_views), ("language_max_length", language_max_length)):
+            if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+                raise ValueError(f"{name} must be a positive integer, got {value!r}")
+        self.num_views = num_views
+        self.language_max_length = language_max_length
         # ProcessorMixin automatically saves these under self.image_processor / self.tokenizer
         super().__init__(image_processor, tokenizer)
 
@@ -130,14 +141,20 @@ class XVLAProcessor(ProcessorMixin):
             }
         """
         # Normalize to batch form
+        if len(images) == 0:
+            raise ValueError("At least one image is required per sample.")
         if not isinstance(images[0], (list, tuple)):
             images = [images]  # convert single sample to batch of size 1
 
         batch_imgs, batch_masks = [], []
 
         for sample_imgs in images:
+            if len(sample_imgs) == 0:
+                raise ValueError("At least one image is required per sample.")
             processed = self.image_processor(sample_imgs, return_tensors="pt", **kwargs)["pixel_values"]
             V_exist = processed.size(0)
+            if V_exist > self.num_views:
+                raise ValueError(f"Received {V_exist} views, but num_views={self.num_views}.")
 
             # Pad to self.num_views
             if V_exist < self.num_views:
@@ -199,8 +216,9 @@ class XVLAProcessor(ProcessorMixin):
 
         # Sanity check for batch alignment
         if "input_ids" in outputs and "image_input" in outputs:
-            assert outputs["input_ids"].size(0) == outputs["image_input"].size(0), (
-                f"Batch mismatch: text batch {outputs['input_ids'].size(0)} "
-                f"!= image batch {outputs['image_input'].size(0)}"
-            )
+            if outputs["input_ids"].size(0) != outputs["image_input"].size(0):
+                raise ValueError(
+                    f"Batch mismatch: text batch {outputs['input_ids'].size(0)} "
+                    f"!= image batch {outputs['image_input'].size(0)}"
+                )
         return outputs
