@@ -287,12 +287,17 @@ accelerate launch \
 | `--learning_coef`    | LR multiplier for soft prompts         |
 | `--iters`            | Total training iterations              |
 | `--freeze_steps`     | Initial steps with zero backbone/core learning rate; gradients are still computed |
-| `--warmup_steps`     | Warmup iterations                      |
+| `--warmup_steps`     | Post-freeze warmup iterations; used only with `--use_cosine_decay` |
+| `--use_cosine_decay` | Enable the current post-freeze warmup/cosine schedule |
 
 Both training entrypoints use the saved processor's camera count when building
 the dataset, keeping custom camera layouts consistent with inference.
 Tensor batches follow Accelerator's selected device, including CPU debugging runs.
 Batch size, iteration count and logging/checkpoint intervals must be positive.
+
+With `--use_cosine_decay`, the schedule starts at `freeze_steps` for every
+parameter group, including the already active prompt/head groups. Without this
+flag, unfrozen groups use their base rates and `warmup_steps` has no effect.
 
 Each data worker can also create NumPy/SciPy BLAS and Arrow thread pools.
 Compare launch-time `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and
