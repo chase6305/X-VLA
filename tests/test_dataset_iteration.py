@@ -244,6 +244,30 @@ class InstructionTests(unittest.TestCase):
                 self.assertEqual(float(samples[-1]['abs_trajectory'][0, 0]), 0.)
                 self.assertEqual(samples[-1]['language_instruction'], agiworld.DOMAIN2INS[domain])
 
+    def test_agiworld_skips_segments_without_two_frames_but_keeps_valid_short_windows(self):
+        for length, splits, expected in ((0, [], 0), (1, [], 0), (2, [], 1),
+                                         (2, [1], 0), (3, [1], 1)):
+            with self.subTest(length=length, splits=splits), tempfile.TemporaryDirectory() as directory:
+                split_file = Path(directory) / 'splits.json'
+                split_file.write_text(json.dumps({'episode': splits}))
+                ee = np.zeros((length, 20), dtype=np.float32)
+                ee[:, 0] = np.arange(length)*.01
+                joints = np.zeros((length, 16), dtype=np.float32)
+                handler = agiworld.AGIWolrdHandler(meta={
+                    'dataset_name': 'agiworld-on-site-pack', 'datalist': ['unused/episode']}, num_views=2)
+                with patch.object(handler, 'read_action', return_value=(joints, ee)), \
+                     patch.object(agiworld, 'SPLITFILE', str(split_file)), \
+                     patch.object(agiworld.random, 'shuffle'), \
+                     patch.object(agiworld.random, 'random', return_value=0.), \
+                     patch.object(agiworld.Image, 'open', return_value=Image.new('RGB', (2, 2))) as opened:
+                    samples = list(handler.iter_episode(0, num_actions=3, training=True,
+                        action_mode='ee6d', image_aug=image_tensor, lang_aug_map=None))
+                self.assertEqual(len(samples), expected)
+                self.assertEqual(opened.call_count, expected*2)
+                if samples:
+                    torch.testing.assert_close(samples[0]['abs_trajectory'][0, 0],
+                                               torch.tensor(.01 if splits else 0.))
+
 
 if __name__ == '__main__':
     torch.set_num_threads(1)

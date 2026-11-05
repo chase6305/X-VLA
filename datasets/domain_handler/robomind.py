@@ -45,7 +45,7 @@ class RobomindHandler(BaseHDF5Handler):
     def build_left_right(
         self, f: h5py.File
     ) -> Tuple[np.ndarray, np.ndarray, Optional[np.ndarray], Optional[np.ndarray], float, float]:
-        ds_name: str = self.meta["dataset_name"]
+        ds_name: str = self.meta.get("robot_type", self.meta["dataset_name"])
 
         if ds_name in ("robomind-franka", "robomind-ur"):
             # Single arm; right is dummy zeros.
