@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import cv2
@@ -16,6 +17,7 @@ class PixelPolicy(torch.nn.Module):
         super().__init__()
         self.weight = torch.nn.Parameter(torch.zeros(1))
         self.app = None
+        self.config = SimpleNamespace(num_domains=1)
 
     def generate_actions(self, **kwargs):
         return torch.zeros(1, 2, 20)
