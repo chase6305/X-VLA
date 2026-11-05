@@ -28,8 +28,13 @@ def read_bytes(path: str) -> bytes:
     return fileio.get(path)
 
 def open_h5(path: str) -> h5py.File:
-    try: return h5py.File(path, "r")
-    except OSError: return h5py.File(io.BytesIO(read_bytes(path)), "r")
+    path = os.fspath(path) if isinstance(path, os.PathLike) else path
+    if not isinstance(path, str):
+        return h5py.File(path, "r")
+    if "://" not in path and type(fileio.get_file_backend(path, enable_singleton=True)) is LocalBackend:
+        try: return h5py.File(path, "r")
+        except OSError: pass
+    return h5py.File(io.BytesIO(read_bytes(path)), "r")
 
 def read_video_to_frames(path: str) -> np.ndarray:
     path = str(path)

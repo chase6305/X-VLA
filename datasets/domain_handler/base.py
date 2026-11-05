@@ -27,6 +27,7 @@ import torch
 from mmengine import fileio
 from PIL import Image
 from scipy.interpolate import interp1d
+from ..utils import open_h5
 
 class DomainHandler(ABC):
     """
@@ -59,10 +60,7 @@ class DomainHandler(ABC):
 
 def _open_h5(path: str) -> h5py.File:
     """Open HDF5 from local FS or remote backend via mmengine.fileio."""
-    try:
-        return h5py.File(path, "r")
-    except OSError:
-        return h5py.File(io.BytesIO(fileio.get(path)), "r")
+    return open_h5(path)
 
 
 class BaseHDF5Handler(DomainHandler):
