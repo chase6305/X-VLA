@@ -226,6 +226,8 @@ class XVLA(PreTrainedModel):
         """
         if self.app is not None:
             return
+        if not callable(processor):
+            raise ValueError("A callable processor is required to start the inference service.")
 
         app = FastAPI()
 
@@ -255,7 +257,7 @@ class XVLA(PreTrainedModel):
                     return JSONResponse({"error": "Processor returned incomplete inputs."}, status_code=400)
 
                 # Build proprio/domain tensors
-                proprio = torch.as_tensor(np.asarray(json_numpy.loads(payload["proprio"])))
+                proprio = torch.tensor(np.asarray(json_numpy.loads(payload["proprio"])))
                 domain_id = torch.tensor([int(payload["domain_id"])], dtype=torch.long)
 
                 # Align to model's device/dtype
@@ -270,7 +272,7 @@ class XVLA(PreTrainedModel):
 
                 inputs = {k: to_model(v) for k, v in inputs.items()}
                 inputs.update({
-                    "proprio": to_model(proprio.unsqueeze(0)),
+                    "proprio": proprio.unsqueeze(0).to(device=device, dtype=dtype),
                     "domain_id": domain_id.to(device),
                 })
 

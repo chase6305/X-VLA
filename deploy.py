@@ -68,6 +68,7 @@ def main():
         print("✅ XVLAProcessor loaded successfully.")
     except Exception as e:
         print(f"⚠️ No processor found or failed to load: {e}")
+        sys.exit(1)
 
     # --------------------------------------------------------------------------
     # Load model
@@ -95,7 +96,11 @@ def main():
         print("✅ Model successfully loaded and moved to device.")
     except Exception as e:
         print(f"❌ Failed to load model: {e}")
-        return
+        sys.exit(1)
+
+    if not callable(getattr(model, "run", None)):
+        print("❌ The loaded model does not implement `.run()` (FastAPI entrypoint).")
+        sys.exit(1)
 
     # --------------------------------------------------------------------------
     # SLURM environment detection
@@ -137,7 +142,7 @@ def main():
 
     # --- Write safely ---
     try:
-        with open(info_path, "w") as f:
+        with open(info_path, "x") as f:
             json.dump(infos, f, indent=4)
         print(f"📝 Server info written to {info_path}")
     except Exception as e:
@@ -149,14 +154,17 @@ def main():
     # --------------------------------------------------------------------------
     print(f"\n🌐 Launching FastAPI service at http://{host}:{args.port} ...")
     try:
-        if hasattr(model, "run"):
-            model.run(processor=processor, host=host, port=args.port)
-        else:
-            print("❌ The loaded model does not implement `.run()` (FastAPI entrypoint).")
+        model.run(processor=processor, host=host, port=args.port)
     except KeyboardInterrupt:
         print("\n🛑 Server stopped manually.")
     except Exception as e:
         print(f"❌ Server failed to start: {e}")
+        sys.exit(1)
+    finally:
+        try:
+            os.remove(info_path)
+        except FileNotFoundError:
+            pass
 
 
 if __name__ == "__main__":
