@@ -46,7 +46,7 @@ with patch.object(sys, 'argv', argv), \
 
 @unittest.skipUnless(os.name == 'posix', 'Requires POSIX signals and inherited sockets')
 class ServiceSignalTests(unittest.TestCase):
-    def check_shutdown(self, shutdown_signal):
+    def check_shutdown(self, shutdown_signal, replace_metadata=False):
         repo = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as directory, socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))
@@ -70,9 +70,16 @@ class ServiceSignalTests(unittest.TestCase):
                             time.sleep(.05)
                     info = Path(directory) / 'info.json'
                     self.assertTrue(info.exists())
+                    if replace_metadata:
+                        replacement = Path(directory) / 'replacement.json'
+                        replacement.write_text('{"owner": "replacement"}')
+                        replacement.replace(info)
                     child.send_signal(shutdown_signal)
                     child.wait(timeout=15)
-                    self.assertFalse(info.exists(), log_path.read_text())
+                    if replace_metadata:
+                        self.assertEqual(info.read_text(), '{"owner": "replacement"}')
+                    else:
+                        self.assertFalse(info.exists(), log_path.read_text())
                 finally:
                     if child.poll() is None:
                         child.kill()
@@ -83,6 +90,11 @@ class ServiceSignalTests(unittest.TestCase):
 
     def test_sigterm_removes_runtime_metadata_after_real_server_shutdown(self):
         self.check_shutdown(signal.SIGTERM)
+
+    def test_replacement_metadata_survives_real_sigint_and_sigterm_shutdowns(self):
+        for shutdown_signal in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signal=shutdown_signal):
+                self.check_shutdown(shutdown_signal, replace_metadata=True)
 
 
 if __name__ == '__main__':
