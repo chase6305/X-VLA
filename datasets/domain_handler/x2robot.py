@@ -59,6 +59,7 @@ class X2RobotHandler(DomainHandler):
         all_action = interp1d(t, all_action,  axis=0, bounds_error=False, 
                               fill_value=(all_action[0], all_action[-1]))
         
+        trajectory_end = float(t.max())
         for idx in idxs:
             imgs = [] 
             for v in range(min(self.num_views, len(images))):
@@ -66,7 +67,7 @@ class X2RobotHandler(DomainHandler):
             while len(imgs) < self.num_views: imgs.append(torch.zeros_like(imgs[0]))
             image_input = torch.stack(imgs, 0)
             cur = t[idx]
-            q = np.linspace(cur, min(cur + qdur, float(t.max())), num_actions + 1, dtype=np.float32)
+            q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
             cur_action = torch.tensor(all_action(q))
             if (cur_action[1]-cur_action[0]).abs().max() < 1e-5: continue
             

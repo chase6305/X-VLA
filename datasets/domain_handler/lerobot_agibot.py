@@ -52,6 +52,7 @@ class AGIBOTLeRobotHandler(DomainHandler):
         if training: random.shuffle(idxs)
 
         ins = item["tasks"][0].split(" | ")[0]
+        trajectory_end = float(t.max())
 
         for idx in idxs:
             imgs = []
@@ -60,7 +61,7 @@ class AGIBOTLeRobotHandler(DomainHandler):
             while len(imgs) < self.num_views: imgs.append(torch.zeros_like(imgs[0]))
             image_input = torch.stack(imgs, 0)
             cur = t[idx]
-            q = np.linspace(cur, min(cur + qdur, float(t.max())), num_actions + 1, dtype=np.float32)
+            q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
             lseq, rseq = torch.tensor(L(q)), torch.tensor(R(q))
             if (lseq[1]-lseq[0]).abs().max() < 1e-5 and (rseq[1]-rseq[0]).abs().max() < 1e-5:continue
             sample_ins = ins

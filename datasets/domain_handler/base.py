@@ -145,11 +145,12 @@ class BaseHDF5Handler(DomainHandler):
         ref = (lt + rt) / 2.0
 
         V = min(self.num_views, len(images))
+        trajectory_end = float(ref.max())
         for idx in idxs:
 
             # Query future window
             cur = ref[idx]
-            q = np.linspace(cur, min(cur + qdur, float(ref.max())), num_actions + 1, dtype=np.float32)
+            q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
             lseq = torch.tensor(L(q))
             rseq = torch.tensor(R(q))
 

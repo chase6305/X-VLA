@@ -133,6 +133,25 @@ class InstructionTests(unittest.TestCase):
                  patch.object(base, '_open_h5', return_value=nullcontext(None)):
                 self.check_paraphrases(handler, training)
 
+    def test_hdf5_resampling_keeps_normal_and_shortened_tail_endpoints(self):
+        class TailSamples(HDF5Samples):
+            def build_left_right(self, file):
+                left = np.zeros((5, 10))
+                left[:, 0] = np.arange(5)
+                return left, np.zeros_like(left), None, None, 1., 3.
+
+            def index_candidates(self, length, training):
+                return [0, 3]
+
+        handler = TailSamples(meta={'datalist': ['unused']}, num_views=1)
+        with patch.object(base, '_open_h5', return_value=nullcontext(None)):
+            samples = list(handler.iter_episode(0, num_actions=3, training=False,
+                           image_aug=image_tensor, lang_aug_map=None))
+        self.assertEqual(len(samples), 2)
+        torch.testing.assert_close(samples[0]['abs_trajectory'][:, 0], torch.tensor([0., 1., 2., 3.]))
+        torch.testing.assert_close(samples[1]['abs_trajectory'][:, 0],
+                                   torch.tensor([3., 10./3., 11./3., 4.]))
+
     def video_handler(self, kind, directory, stack):
         length = 160
         frames = np.zeros((length, 2, 2, 3), dtype=np.uint8)
@@ -195,6 +214,19 @@ class InstructionTests(unittest.TestCase):
                     self.assertEqual(sample['image_input'].shape, (views, 3, 2, 2))
                     self.assertEqual(sample['image_mask'].tolist(),
                                      [True]*valid + [False]*(views-valid))
+
+    def test_video_resampling_keeps_alignment_and_action_endpoints(self):
+        expected = {'agibot': ([0., .4, .8, 1.2], [1.2, 1.33, 1.46, 1.59]),
+                    'lerobot': ([0., .1, .2, .3], [1.28, 1.38, 1.48, 1.58]),
+                    'x2robot': ([0., .1, .2, .3], [1.29, 1.39, 1.49, 1.59])}
+        for kind in expected:
+            with self.subTest(handler=kind), tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+                handler = self.video_handler(kind, directory, stack)
+                samples = list(handler.iter_episode(0, num_actions=3, training=False,
+                    image_aug=image_tensor, lang_aug_map=None))
+                for sample, values in zip((samples[0], samples[-1]), expected[kind]):
+                    torch.testing.assert_close(sample['abs_trajectory'][:, 0], torch.tensor(values),
+                                               rtol=1e-6, atol=1e-6)
 
     def test_agiworld_camera_budgets_work_in_full_and_dropped_view_branches(self):
         length = 130
