@@ -286,7 +286,7 @@ accelerate launch \
 | `--learning_rate`    | Base LR                                |
 | `--learning_coef`    | LR multiplier for soft prompts         |
 | `--iters`            | Total training iterations              |
-| `--freeze_steps`     | Steps to freeze backbone               |
+| `--freeze_steps`     | Initial steps with zero backbone/core learning rate; gradients are still computed |
 | `--warmup_steps`     | Warmup iterations                      |
 
 Both training entrypoints use the saved processor's camera count when building
