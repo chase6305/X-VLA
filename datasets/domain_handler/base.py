@@ -151,8 +151,8 @@ class BaseHDF5Handler(DomainHandler):
             # Query future window
             cur = ref[idx]
             q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
-            lseq = torch.tensor(L(q))
-            rseq = torch.tensor(R(q))
+            lseq = torch.from_numpy(L(q))
+            rseq = torch.from_numpy(R(q))
 
             # Skip static segments
             if (lseq[1] - lseq[0]).abs().max() < 1e-5 and (rseq[1] - rseq[0]).abs().max() < 1e-5: continue

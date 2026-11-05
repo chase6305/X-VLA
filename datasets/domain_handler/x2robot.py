@@ -68,7 +68,7 @@ class X2RobotHandler(DomainHandler):
             image_input = torch.stack(imgs, 0)
             cur = t[idx]
             q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
-            cur_action = torch.tensor(all_action(q))
+            cur_action = torch.from_numpy(all_action(q))
             if (cur_action[1]-cur_action[0]).abs().max() < 1e-5: continue
             
             ### pad the action to max_action_dim

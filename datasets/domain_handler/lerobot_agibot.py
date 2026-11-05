@@ -62,7 +62,7 @@ class AGIBOTLeRobotHandler(DomainHandler):
             image_input = torch.stack(imgs, 0)
             cur = t[idx]
             q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
-            lseq, rseq = torch.tensor(L(q)), torch.tensor(R(q))
+            lseq, rseq = torch.from_numpy(L(q)), torch.from_numpy(R(q))
             if (lseq[1]-lseq[0]).abs().max() < 1e-5 and (rseq[1]-rseq[0]).abs().max() < 1e-5:continue
             sample_ins = ins
             if training and lang_aug_map and ins in lang_aug_map:
