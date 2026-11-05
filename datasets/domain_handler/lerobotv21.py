@@ -45,9 +45,10 @@ class LeRobotV21Handler(DomainHandler):
             fileio.join_path(self.meta["root_path"], self.meta["video_path"]).format(
             episode_chunk=episode_chunk, episode_index=episode_index, video_key = vkey
         ))
-        for vkey in self.CAMERA_VIEW]
+        for vkey in self.CAMERA_VIEW[:self.num_views]]
 
-        image_mask = torch.ones(self.num_views, dtype=torch.bool)
+        image_mask = torch.zeros(self.num_views, dtype=torch.bool)
+        image_mask[:len(images)] = True
         data = read_parquet(data_path)
         
         # do prefix sum for action.base_delta

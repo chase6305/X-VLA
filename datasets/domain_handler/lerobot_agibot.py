@@ -31,10 +31,11 @@ class AGIBOTLeRobotHandler(DomainHandler):
         ep = item["episode_index"]; chunk = f"chunk-{ep//1000:03d}"; key = f"episode_{ep:06d}"
 
         pq_path = fileio.join_path(item["top_path"], "data", chunk, key + ".parquet")
-        vkeys = ["observation.images.head", "observation.images.hand_left", "observation.images.hand_right"]
+        vkeys = ["observation.images.head", "observation.images.hand_left", "observation.images.hand_right"][:self.num_views]
         vid_paths = [fileio.join_path(item["top_path"], "videos", chunk, k, key + ".mp4") for k in vkeys]
         images = [read_video_to_frames(p) for p in vid_paths]
-        image_mask = torch.ones(self.num_views, dtype=torch.bool)
+        image_mask = torch.zeros(self.num_views, dtype=torch.bool)
+        image_mask[:len(images)] = True
 
         data = read_parquet(pq_path)
         pos = np.asarray(data["actions.end.position"])     # [T,2,3]

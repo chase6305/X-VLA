@@ -180,6 +180,45 @@ class InstructionTests(unittest.TestCase):
                     handler = self.video_handler(kind, directory, stack)
                     self.check_paraphrases(handler, training)
 
+    def test_video_camera_budgets_control_decoding_padding_and_masks(self):
+        modules = {'agibot': lerobot_agibot, 'lerobot': lerobotv21, 'x2robot': x2robot}
+        for kind, module in modules.items():
+            for views in (1, 2, 3, 4):
+                with self.subTest(kind=kind, views=views), \
+                     tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+                    handler = self.video_handler(kind, directory, stack)
+                    handler.num_views = views
+                    sample = next(handler.iter_episode(0, num_actions=3, training=False,
+                        image_aug=image_tensor, lang_aug_map=None))
+                    valid = min(views, 3)
+                    self.assertEqual(module.read_video_to_frames.call_count, valid)
+                    self.assertEqual(sample['image_input'].shape, (views, 3, 2, 2))
+                    self.assertEqual(sample['image_mask'].tolist(),
+                                     [True]*valid + [False]*(views-valid))
+
+    def test_agiworld_camera_budgets_work_in_full_and_dropped_view_branches(self):
+        length = 130
+        ee = np.zeros((length, 20), dtype=np.float32)
+        ee[:, 0] = np.arange(length)*.01
+        joints = np.zeros((length, 16), dtype=np.float32)
+        for views in (1, 2, 3, 4):
+            for draw in (0., 1.):
+                with self.subTest(views=views, draw=draw):
+                    handler = agiworld.AGIWolrdHandler(meta={
+                        'dataset_name': 'agiworld-on-site-pour', 'datalist': ['unused/episode']},
+                        num_views=views)
+                    with patch.object(handler, 'read_action', return_value=(joints, ee)), \
+                         patch.object(agiworld.random, 'shuffle'), \
+                         patch.object(agiworld.random, 'random', return_value=draw), \
+                         patch.object(agiworld.Image, 'open', return_value=Image.new('RGB', (2, 2))) as open_image:
+                        sample = next(handler.iter_episode(0, num_actions=3, training=True,
+                            action_mode='ee6d', image_aug=image_tensor, lang_aug_map=None))
+                    valid = min(views, 3) if draw == 0. else 1
+                    self.assertEqual(sample['image_input'].shape, (views, 3, 2, 2))
+                    self.assertEqual(sample['image_mask'].tolist(),
+                                     [True]*valid + [False]*(views-valid))
+                    self.assertEqual(open_image.call_count, valid)
+
     def test_agiworld_stage_instruction_does_not_leak_to_earlier_frames(self):
         cases = [('agiworld-on-site-pour', 130, 'stop and place the cup on the table.'),
                  ('agiworld-on-site-microwave', 650, 'close and start it.')]

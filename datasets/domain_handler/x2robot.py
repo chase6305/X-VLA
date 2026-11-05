@@ -37,8 +37,9 @@ class X2RobotHandler(DomainHandler):
         with open(action_file, "r") as f:  action_data = json.load(f)["data"]
         images = [read_video_to_frames(
             fileio.join_path(data_dir, f"{vkey}.mp4"))
-            for vkey in self.CAMERA_VIEW]
-        image_mask = torch.ones(self.num_views, dtype=torch.bool)
+            for vkey in self.CAMERA_VIEW[:self.num_views]]
+        image_mask = torch.zeros(self.num_views, dtype=torch.bool)
+        image_mask[:len(images)] = True
 
         all_action = {key: [] for key in self.ACTION_KEY}
         for frame_data in action_data:

@@ -184,14 +184,15 @@ class AGIWolrdHandler(DomainHandler):  # Note: "Wolrd" looks like a typo; kept f
                     image_names = ['head_color', 'hand_left_color', 'hand_right_color']
                     image_path = [fileio.join_path(item, f'videos/{name}/frame_{idx}.jpg') for name in image_names]
 
+                image_path = image_path[:self.num_views]
                 if random.random() < 0.5:
                     # Load, convert to RGB, apply augmentation, and stack
-                    image_mask = torch.tensor([1, 1, 1]).to(torch.bool)
                     imgs = [image_aug(Image.open(p).convert('RGB')) for p in image_path]
                 else:
-                    image_mask = torch.tensor([1, 0, 0]).to(torch.bool)
                     imgs = [image_aug(Image.open(image_path[0]).convert('RGB'))]
-                    while len(imgs) < self.num_views: imgs.append(torch.zeros_like(imgs[0]))
+                image_mask = torch.zeros(self.num_views, dtype=torch.bool)
+                image_mask[:len(imgs)] = True
+                while len(imgs) < self.num_views: imgs.append(torch.zeros_like(imgs[0]))
                 
                 image_input = torch.stack(imgs, dim=0)
                 
