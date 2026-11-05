@@ -15,8 +15,9 @@
 # ------------------------------------------------------------------------------
 
 from __future__ import annotations
-import io, numpy as np, pyarrow.parquet as pq, av, cv2
+import io, os, numpy as np, pyarrow.parquet as pq, av, cv2
 from mmengine import fileio
+from mmengine.fileio.backends import LocalBackend
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
 import h5py
@@ -31,11 +32,14 @@ def open_h5(path: str) -> h5py.File:
     except OSError: return h5py.File(io.BytesIO(read_bytes(path)), "r")
 
 def read_video_to_frames(path: str) -> np.ndarray:
-    buf = io.BytesIO(read_bytes(path)); container = av.open(buf, options={'threads': '2'})
+    path = str(path)
+    source = (path if "://" not in path and os.path.isfile(path)
+              and type(fileio.get_file_backend(path, enable_singleton=True)) is LocalBackend
+              else io.BytesIO(read_bytes(path)))
     frames = []
-    for packet in container.demux(video=0):
-        for f in packet.decode(): frames.append(f.to_ndarray(format="rgb24"))
-    container.close()
+    with av.open(source, options={'threads': '2'}) as container:
+        for packet in container.demux(video=0):
+            for f in packet.decode(): frames.append(f.to_ndarray(format="rgb24"))
     return np.stack(frames, axis=0)
 
 def read_parquet(path: str) -> dict:
