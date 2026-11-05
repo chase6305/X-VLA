@@ -137,6 +137,9 @@ The client communicates via HTTP POST, sending multimodal data (vision + languag
 
 #### Payload Structure
 
+Image payloads accept RGB arrays or one-dimensional `uint8` arrays containing
+encoded PNG/JPEG bytes; both forms are decoded to RGB.
+
 | Key                    | Type                      | Description                                           |
 | :--------------------- | :------------------------ | :---------------------------------------------------- |
 | `proprio`              | `json_numpy.dumps(array)` | Current proprioceptive state (e.g., joint positions). |
@@ -145,9 +148,6 @@ The client communicates via HTTP POST, sending multimodal data (vision + languag
 | `image1`, `image2`     | *optional*                | Additional camera views if applicable.                |
 | `domain_id`            | `int`                     | Identifier for the current robotic embodiment/domain. |
 | `steps`                | `int`                     | denoising steps for flow-matching based generation (e.g., 10).         |
-
-Image payloads accept RGB arrays or one-dimensional `uint8` arrays containing
-encoded PNG/JPEG bytes; both forms are decoded to RGB.
 
 #### Example Client Code
 
