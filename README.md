@@ -282,6 +282,7 @@ accelerate launch \
 | `--batch_size`       | Batch size                             |
 | `--num_workers`      | Data workers (default: 4); use 0 for in-process loading |
 | `--prefetch_factor`  | Prefetched batches per worker (default: 2) |
+| `--use_processor_image_config` | Opt in to the checkpoint's image resizing/cropping and normalization |
 | `--learning_rate`    | Base LR                                |
 | `--learning_coef`    | LR multiplier for soft prompts         |
 | `--iters`            | Total training iterations              |
@@ -292,6 +293,14 @@ Both training entrypoints use the saved processor's camera count when building
 the dataset, keeping custom camera layouts consistent with inference.
 Tensor batches follow Accelerator's selected device, including CPU debugging runs.
 Batch size, iteration count and logging/checkpoint intervals must be positive.
+
+Use `--use_processor_image_config` when training with custom image preprocessing.
+The reader then applies color augmentation to the source image before the saved
+image processor's resize/crop, rescaling and normalization. Without this flag,
+the existing 224-pixel resize, augmentation order and ImageNet normalization stay
+unchanged. Inference and augmentation-free loading use the same processor settings
+when this option is enabled. The checkpoint model must support the resulting image
+dimensions.
 
 ---
 

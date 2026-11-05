@@ -32,6 +32,7 @@ def create_dataloader(batch_size: int,
                       num_workers: int = 4,
                       prefetch_factor: int = 2,
                       num_views: int = 3,
+                      image_processor=None,
                       ):
     if num_workers < 0:
         raise ValueError("num_workers must be non-negative")
@@ -41,7 +42,8 @@ def create_dataloader(batch_size: int,
         raise ValueError("num_views must be a positive integer")
     return DataLoader(
         InfiniteDataReader(metas_path, num_actions=num_actions, training=training,
-                           action_mode=action_mode, num_views=num_views),
+                           action_mode=action_mode, num_views=num_views,
+                           image_processor=image_processor),
         batch_size=batch_size,
         num_workers=num_workers,
         prefetch_factor=prefetch_factor if num_workers else None,

@@ -108,8 +108,8 @@ class DataLoaderOptionsTests(unittest.TestCase):
                 reader.assert_not_called()
 
     def test_both_training_entrypoints_forward_the_selected_options(self):
-        for name in ('train', 'peft_train'):
-            with self.subTest(entrypoint=name), ExitStack() as stack:
+        for name, enabled in ((name, enabled) for name in ('train', 'peft_train') for enabled in (False, True)):
+            with self.subTest(entrypoint=name, processor_config=enabled), ExitStack() as stack:
                 module = importlib.import_module(name)
                 model = Mock(num_actions=30, action_mode='ee6d')
                 accelerator = Mock(process_index=0)
@@ -117,20 +117,23 @@ class DataLoaderOptionsTests(unittest.TestCase):
                 stack.enter_context(patch.object(module, 'get_logger', return_value=Mock()))
                 stack.enter_context(patch.object(module, 'set_seed'))
                 stack.enter_context(patch.object(module.XVLA, 'from_pretrained', return_value=model))
+                processor = Mock(num_views=2)
                 stack.enter_context(patch.object(module.XVLAProcessor, 'from_pretrained',
-                                               return_value=Mock(num_views=2)))
+                                               return_value=processor))
                 if name == 'peft_train':
                     stack.enter_context(patch.object(module, 'get_peft_model', return_value=model))
                 loader = stack.enter_context(patch.object(module, 'create_dataloader', side_effect=StopAfterDataLoader))
                 with tempfile.TemporaryDirectory() as directory:
                     args = module.get_args_parser().parse_args([
                         '--models', 'unused', '--train_metas_path', 'unused', '--output_dir', directory,
-                        '--num_workers', '0', '--prefetch_factor', '5'])
+                        '--num_workers', '0', '--prefetch_factor', '5'] +
+                        (['--use_processor_image_config'] if enabled else []))
                     with self.assertRaises(StopAfterDataLoader):
                         module.main(args)
                 self.assertEqual(loader.call_args.kwargs['num_workers'], 0)
                 self.assertEqual(loader.call_args.kwargs['prefetch_factor'], 5)
                 self.assertEqual(loader.call_args.kwargs['num_views'], 2)
+                self.assertIs(loader.call_args.kwargs['image_processor'], processor.image_processor if enabled else None)
 
     def test_invalid_training_options_fail_before_initializing_resources(self):
         for name in ('train', 'peft_train'):

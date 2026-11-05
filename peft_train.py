@@ -82,6 +82,8 @@ def get_args_parser():
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=4, help="Data workers; use 0 for in-process loading")
     parser.add_argument("--prefetch_factor", type=int, default=2, help="Prefetched batches per data worker")
+    parser.add_argument("--use_processor_image_config", action="store_true",
+                        help="Use checkpoint image preprocessing after color augmentation instead of the legacy image transform")
 
     # Optimizer
     parser.add_argument("--learning_rate", type=float, default=1e-4)
@@ -228,6 +230,7 @@ def main(args):
         num_workers=args.num_workers,
         prefetch_factor=args.prefetch_factor,
         num_views=processor.num_views,
+        image_processor=processor.image_processor if getattr(args, "use_processor_image_config", False) else None,
     )
 
     # Optimizer
