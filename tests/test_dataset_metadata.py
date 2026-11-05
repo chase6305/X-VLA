@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from mmengine.fileio import io as backend_io, register_backend
+from mmengine.fileio.backends import LocalBackend
 
 import datasets.dataset as reader_module
 from datasets.dataset import InfiniteDataReader
@@ -98,6 +100,25 @@ class DatasetMetadataTests(unittest.TestCase):
              patch.object(reader_module.fileio, 'get', side_effect=payloads.__getitem__):
             reader = InfiniteDataReader(f'{root}/meta/info.json', training=False)
         self.assertEqual(reader.metas[root]['datalist'], records)
+
+    def test_custom_local_backend_is_not_bypassed_by_a_real_episode_file(self):
+        episodes = self.root / 'episodes.jsonl'
+        episodes.write_text(json.dumps({'episode_index': 999, 'tasks': ['filesystem decoy']})+'\n')
+        records = [{'episode_index': 7, 'tasks': ['backend record']}]
+        self.write_meta('info.json', {'codebase_version': 'v2.1', 'root_path': '/mapped-lift',
+                        'robot_type': 'lift2', 'total_episodes': 1})
+
+        class MappedLocalBackend(LocalBackend):
+            def get(self, filepath):
+                if str(filepath) == str(episodes):
+                    return (json.dumps(records[0])+'\n').encode()
+                return super().get(filepath)
+
+        with patch.dict(backend_io.backends), patch.dict(backend_io.prefix_to_backends), \
+             patch.dict(backend_io.backend_instances, clear=True):
+            register_backend('local', MappedLocalBackend, force=True, prefixes='')
+            reader = InfiniteDataReader(str(self.root / 'info.json'), training=False)
+        self.assertEqual(reader.metas['/mapped-lift']['datalist'], records)
 
 
 if __name__ == '__main__':

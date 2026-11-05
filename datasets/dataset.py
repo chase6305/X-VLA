@@ -22,6 +22,7 @@ from torch.utils.data import IterableDataset, get_worker_info
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 from mmengine import fileio
+from mmengine.fileio.backends import LocalBackend
 from .utils import action_slice
 from .domain_config import DATA_WEIGHTS, DATA_DOMAIN_ID
 from .domain_handler.registry import get_handler_cls
@@ -72,8 +73,10 @@ class InfiniteDataReader(IterableDataset):
                 meta['datalist'] = []
                 if "root_path" not in meta.keys(): meta['root_path'] = "/".join(file_path.split("/")[:-2])
                 episodes_path = fileio.join_path("/".join(file_path.split("/")[:-1]), "episodes.jsonl")
+                # Custom local backends may map or transform the file.
                 with (open(episodes_path, "rb")
                       if "://" not in episodes_path and os.path.isfile(episodes_path)
+                      and type(fileio.get_file_backend(episodes_path, enable_singleton=True)) is LocalBackend
                       else io.BytesIO(fileio.get(episodes_path))) as f:
                     for line in f: meta['datalist'].append(json.loads(line.decode("utf-8")))
                 dataset_key = meta['root_path']
