@@ -16,6 +16,7 @@ import torch
 
 import deploy
 from models.modeling_xvla import XVLA
+from models.action_hub import build_action_space
 
 
 class RequestPolicy(torch.nn.Module):
@@ -77,6 +78,26 @@ class RequestTests(unittest.TestCase):
                 endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
                 self.assertEqual(endpoint(self.payload(np.full(20, value))).status_code, 400)
                 self.assertIsNone(model.received)
+
+    def test_state_width_matches_the_space_while_auto_keeps_padding_support(self):
+        cases = [('ee6d', {}, (20,), (0, 19, 21)),
+                 ('joint', {}, (14,), (0, 13, 15)),
+                 ('agibot_ee6d', {}, (20,), (0, 19, 21)),
+                 ('auto', {'real_dim': 7, 'max_dim': 20}, (0, 7, 16, 20), (21,)),
+                 ('custom-padded', {'real_dim': 7, 'max_dim': 20}, (7,), ())]
+        for name, options, valid, invalid in cases:
+            for width in (*valid, *invalid):
+                with self.subTest(space=name, width=width):
+                    model = RequestPolicy()
+                    model.action_space = build_action_space('auto' if name == 'custom-padded' else name, **options)
+                    if name == 'custom-padded':
+                        model.action_space.name = name
+                    model._build_app(processor)
+                    endpoint = next(r.endpoint for r in model.app.routes if r.path == '/act')
+                    response = endpoint(self.payload(np.zeros(width)))
+                    self.assertEqual(response.status_code, 200 if width in valid else 400)
+                    if width in invalid:
+                        self.assertIsNone(model.received)
 
     def test_continuous_state_uses_model_dtype_for_numeric_payloads(self):
         for model_dtype in (torch.float32, torch.float64):

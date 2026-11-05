@@ -277,6 +277,11 @@ class XVLA(PreTrainedModel):
                 proprio = proprio.to(dtype=dtype)
                 if not torch.isfinite(proprio).all():
                     return JSONResponse({"error": "proprio must be finite in the model's dtype."}, status_code=400)
+                space = getattr(self, "action_space", None)
+                if space is not None and space.name in ("ee6d", "joint", "agibot_ee6d", "auto"):
+                    width = getattr(space, "dim_proprio", space.dim_action)
+                    if proprio.numel() > width or (space.name != "auto" and proprio.numel() != width):
+                        return JSONResponse({"error": "proprio width does not match the checkpoint action space."}, status_code=400)
 
                 def to_model(t: torch.Tensor) -> torch.Tensor:
                     if not isinstance(t, torch.Tensor):
