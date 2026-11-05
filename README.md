@@ -262,6 +262,10 @@ X-VLA supports fine-tuning on new demonstrations via a modular and extensible da
 
 ### Launch Training with Accelerate
 
+Both full-model and LoRA checkpoint directories include the processor configuration,
+image preprocessing settings and tokenizer. When deploying an adapter with a custom
+processor, pass its checkpoint directory via `--processor_path` alongside `--LoRA_path`.
+
 ```bash
 accelerate launch \
     --mixed_precision bf16 \
@@ -285,10 +289,6 @@ accelerate launch \
 | `--iters`            | Total training iterations              |
 | `--freeze_steps`     | Steps to freeze backbone               |
 | `--warmup_steps`     | Warmup iterations                      |
-
-Both full-model and LoRA checkpoint directories include the processor configuration,
-image preprocessing settings and tokenizer. When deploying an adapter with a custom
-processor, pass its checkpoint directory via `--processor_path` alongside `--LoRA_path`.
 
 ---
 
