@@ -271,6 +271,10 @@ These exports do not include optimizer, RNG or data-iterator state. The saved
 and schedule from step zero, so loading weights does not resume the original
 training trajectory.
 
+Image inputs remain real floating-point tensors. If rescaling and normalization
+are disabled, integer pixels are converted to FP32 without changing their values;
+existing floating-point pixel dtypes are preserved.
+
 ```bash
 accelerate launch \
     --mixed_precision bf16 \

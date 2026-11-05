@@ -44,6 +44,31 @@ class ProcessorTests(unittest.TestCase):
         torch.testing.assert_close(outputs['image_input'][0, 0], expected, rtol=0, atol=0)
         self.assertEqual(int(outputs['image_input'][0, 1:].count_nonzero()), 0)
 
+    def test_unscaled_integer_pixels_become_floating_without_changing_values(self):
+        self.image_processor.do_rescale = False
+        self.image_processor.do_normalize = False
+        raw = self.image_processor([self.image], return_tensors='pt')['pixel_values']
+        self.assertEqual(raw.dtype, torch.uint8)
+        outputs = self.processor().encode_image([self.image])
+        self.assertEqual(outputs['image_input'].dtype, torch.float32)
+        torch.testing.assert_close(outputs['image_input'][0, 0], raw[0].float(), rtol=0, atol=0)
+        self.assertEqual(outputs['image_input'][0, 1:].count_nonzero().item(), 0)
+
+    def test_floating_pixel_dtypes_are_preserved_and_complex_pixels_are_rejected(self):
+        processor = self.processor()
+        for dtype in (torch.float16, torch.float32, torch.float64):
+            pixels = torch.ones(1, 3, 8, 8, dtype=dtype)
+            with self.subTest(dtype=dtype), patch.object(self.image_processor, 'preprocess',
+                                                       return_value={'pixel_values': pixels}):
+                outputs = processor.encode_image([self.image])
+                self.assertEqual(outputs['image_input'].dtype, dtype)
+                torch.testing.assert_close(outputs['image_input'][0, 0], pixels[0], rtol=0, atol=0)
+                self.assertEqual(outputs['image_input'][0, 1:].count_nonzero().item(), 0)
+        with patch.object(self.image_processor, 'preprocess',
+                          return_value={'pixel_values': torch.ones(1, 3, 8, 8, dtype=torch.complex64)}):
+            with self.assertRaisesRegex(ValueError, 'real'):
+                processor.encode_image([self.image])
+
     def test_custom_configuration_survives_save_and_reload(self):
         processor = self.processor(num_views=2, language_max_length=16)
         destination = self.root / 'checkpoint'
