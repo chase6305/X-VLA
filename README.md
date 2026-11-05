@@ -288,6 +288,9 @@ accelerate launch \
 | `--freeze_steps`     | Steps to freeze backbone               |
 | `--warmup_steps`     | Warmup iterations                      |
 
+Both training entrypoints use the saved processor's camera count when building
+the dataset, keeping custom camera layouts consistent with inference.
+
 ---
 
 

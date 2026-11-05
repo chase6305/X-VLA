@@ -220,6 +220,7 @@ def main(args):
         training=True,
         num_workers=args.num_workers,
         prefetch_factor=args.prefetch_factor,
+        num_views=processor.num_views,
     )
 
     # Optimizer

@@ -50,8 +50,17 @@ class DataLoaderOptionsTests(unittest.TestCase):
         self.assertEqual(loader.prefetch_factor, 5)
         self.assertTrue(loader.persistent_workers)
 
+    def test_camera_count_is_forwarded_to_the_reader(self):
+        for options, expected in (({}, 3), ({'num_views': 1}, 1), ({'num_views': 2}, 2)):
+            with self.subTest(options=options), \
+                 patch.object(datasets, 'InfiniteDataReader', return_value=Samples()) as reader:
+                datasets.create_dataloader(batch_size=2, metas_path='unused', num_actions=30,
+                                           training=True, action_mode='ee6d', **options)
+            self.assertEqual(reader.call_args.kwargs['num_views'], expected)
+
     def test_invalid_options_fail_before_reading_metadata(self):
-        for kwargs in ({'num_workers': -1}, {'prefetch_factor': 0}, {'prefetch_factor': -1}):
+        for kwargs in ({'num_workers': -1}, {'prefetch_factor': 0}, {'prefetch_factor': -1},
+                       {'num_views': 0}, {'num_views': -1}, {'num_views': True}, {'num_views': 1.5}):
             with self.subTest(kwargs=kwargs), patch.object(datasets, 'InfiniteDataReader') as reader:
                 with self.assertRaises(ValueError):
                     datasets.create_dataloader(batch_size=2, metas_path='unused', num_actions=30,
@@ -68,7 +77,8 @@ class DataLoaderOptionsTests(unittest.TestCase):
                 stack.enter_context(patch.object(module, 'get_logger', return_value=Mock()))
                 stack.enter_context(patch.object(module, 'set_seed'))
                 stack.enter_context(patch.object(module.XVLA, 'from_pretrained', return_value=model))
-                stack.enter_context(patch.object(module.XVLAProcessor, 'from_pretrained', return_value=Mock()))
+                stack.enter_context(patch.object(module.XVLAProcessor, 'from_pretrained',
+                                               return_value=Mock(num_views=2)))
                 if name == 'peft_train':
                     stack.enter_context(patch.object(module, 'get_peft_model', return_value=model))
                 loader = stack.enter_context(patch.object(module, 'create_dataloader', side_effect=StopAfterDataLoader))
@@ -80,6 +90,7 @@ class DataLoaderOptionsTests(unittest.TestCase):
                         module.main(args)
                 self.assertEqual(loader.call_args.kwargs['num_workers'], 0)
                 self.assertEqual(loader.call_args.kwargs['prefetch_factor'], 5)
+                self.assertEqual(loader.call_args.kwargs['num_views'], 2)
 
 
 if __name__ == '__main__':
