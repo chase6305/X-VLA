@@ -228,6 +228,26 @@ class InstructionTests(unittest.TestCase):
                     torch.testing.assert_close(sample['abs_trajectory'][:, 0], torch.tensor(values),
                                                rtol=1e-6, atol=1e-6)
 
+    def test_x2_restarts_do_not_mutate_relative_metadata_paths(self):
+        for training in (False, True):
+            with self.subTest(training=training), tempfile.TemporaryDirectory(dir='.') as directory, \
+                 ExitStack() as stack:
+                handler = self.video_handler('x2robot', directory, stack)
+                handler.meta['top_path'] = directory
+                item = handler.meta['datalist'][0]
+                item['path'] = ''
+                options = dict(num_actions=3, training=training, image_aug=image_tensor,
+                               lang_aug_map=None)
+                random.seed(117)
+                first = list(handler.iter_episode(0, **options))
+                random.seed(117)
+                second = list(handler.iter_episode(0, **options))
+                self.assertEqual(item['path'], '')
+                self.assertEqual(len(first), len(second))
+                self.assertTrue(first)
+                for before, after in zip(first, second):
+                    torch.testing.assert_close(before['abs_trajectory'], after['abs_trajectory'], rtol=0, atol=0)
+
     def test_agiworld_camera_budgets_work_in_full_and_dropped_view_branches(self):
         length = 130
         ee = np.zeros((length, 20), dtype=np.float32)

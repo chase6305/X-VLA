@@ -29,8 +29,8 @@ class X2RobotHandler(DomainHandler):
                      **kwargs):
         
         item = self.meta["datalist"][traj_idx]
-        if "top_path" in self.meta: item["path"] = fileio.join_path(self.meta["top_path"], item["path"])
-        data_dir = fileio.join_path(item["path"], item["name"])
+        path = fileio.join_path(self.meta["top_path"], item["path"]) if "top_path" in self.meta else item["path"]
+        data_dir = fileio.join_path(path, item["name"])
         ins = item["instruction"]
 
         action_file = fileio.join_path(data_dir, item["name"] + ".json")
