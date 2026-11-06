@@ -46,7 +46,8 @@ class X2RobotHandler(DomainHandler):
             for key in self.ACTION_KEY:
                 if not isinstance(frame_data[key], list): 
                     frame_data[key] = [frame_data[key]]
-                all_action[key].append(np.array(frame_data[key]))
+                all_action[key].append(frame_data[key])
+        # Stack one column at a time without retaining per-frame arrays for all columns.
         all_action = {key: np.stack(all_action[key]) for key in self.ACTION_KEY}
         all_action = np.concatenate(
             [np.asarray(all_action[key]) for key in self.ACTION_KEY], axis=-1)
