@@ -258,7 +258,7 @@ def main(args):
             accelerator.log(logs, step=global_step)
 
             if accelerator.is_main_process:
-                dt = (time.time() - t0) / args.log_interval
+                dt = (time.time() - t0) / (args.log_interval if global_step else 1)
                 t0 = time.time()
                 cpu_mem = psutil.Process(os.getpid()).memory_info().rss / 1024**3
                 gpu_mem = torch.cuda.memory_allocated() / 1024**3

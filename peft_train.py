@@ -277,7 +277,7 @@ def main(args):
             accelerator.log(logs, step=global_step)
 
             if accelerator.is_main_process:
-                dt = (time.time() - t0) / args.log_interval
+                dt = (time.time() - t0) / (args.log_interval if global_step else 1)
                 t0 = time.time()
                 logger.info(
                     f"[{global_step}/{args.iters}] "
