@@ -65,8 +65,9 @@ class LeRobotV21Handler(DomainHandler):
         idxs = list(range(1, all_action.shape[0] - 30))
         
         if training: random.shuffle(idxs)
+        # Detach endpoint rows so fill values do not retain the full raw matrix.
         all_action = interp1d(t, all_action,  axis=0, bounds_error=False, 
-                              fill_value=(all_action[0], all_action[-1]))
+                              fill_value=(all_action[0].copy(), all_action[-1].copy()))
         
         ins = item["tasks"][0]
         trajectory_end = float(t.max())

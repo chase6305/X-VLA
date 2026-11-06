@@ -57,8 +57,9 @@ class X2RobotHandler(DomainHandler):
         freq = 30.0; qdur = 1.0; t = np.arange(all_action.shape[0], dtype=np.float64) / freq
         idxs = list(range(0, all_action.shape[0] - 30))
         if training: random.shuffle(idxs)
+        # Detach endpoint rows so fill values do not retain the full raw matrix.
         all_action = interp1d(t, all_action,  axis=0, bounds_error=False, 
-                              fill_value=(all_action[0], all_action[-1]))
+                              fill_value=(all_action[0].copy(), all_action[-1].copy()))
         
         trajectory_end = float(t.max())
         for idx in idxs:
