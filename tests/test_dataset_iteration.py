@@ -229,6 +229,27 @@ class InstructionTests(unittest.TestCase):
                     torch.testing.assert_close(sample['abs_trajectory'][:, 0], torch.tensor(values),
                                                rtol=1e-6, atol=1e-6)
 
+    def test_agibot_keeps_motion_from_either_arm_and_skips_fully_static_windows(self):
+        for moving_arm in (0, 1, None):
+            with self.subTest(moving_arm=moving_arm), tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+                handler = self.video_handler('agibot', directory, stack)
+                position = np.zeros((160, 2, 3))
+                if moving_arm is not None:
+                    position[:, moving_arm, 0] = np.arange(160) * .01
+                lerobot_agibot.read_parquet.return_value['actions.end.position'] = position
+                samples = list(handler.iter_episode(0, num_actions=3, training=False,
+                    image_aug=image_tensor, lang_aug_map=None))
+                if moving_arm is None:
+                    self.assertEqual(samples, [])
+                    continue
+                self.assertEqual(len(samples), 2)
+                expected = ([0., .4, .8, 1.2], [1.2, 1.33, 1.46, 1.59])
+                for sample, values in zip(samples, expected):
+                    torch.testing.assert_close(sample['abs_trajectory'][:, moving_arm * 10],
+                                               torch.tensor(values), rtol=1e-6, atol=1e-6)
+                    torch.testing.assert_close(sample['abs_trajectory'][:, (1-moving_arm) * 10],
+                                               torch.zeros(4), rtol=0, atol=0)
+
     def test_video_handlers_release_converted_raw_data_before_yielding(self):
         class SourceDict(dict):
             pass
