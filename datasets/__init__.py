@@ -28,13 +28,26 @@ def create_dataloader(batch_size: int,
                       metas_path: str, 
                       num_actions: int,
                       training: bool,
-                      action_mode: str
+                      action_mode: str,
+                      num_workers: int = 4,
+                      prefetch_factor: int = 2,
+                      num_views: int = 3,
+                      image_processor=None,
                       ):
+    if num_workers < 0:
+        raise ValueError("num_workers must be non-negative")
+    if prefetch_factor < 1:
+        raise ValueError("prefetch_factor must be positive")
+    if not isinstance(num_views, int) or isinstance(num_views, bool) or num_views < 1:
+        raise ValueError("num_views must be a positive integer")
     return DataLoader(
-        InfiniteDataReader(metas_path, num_actions=num_actions, training=training, action_mode = action_mode),
+        InfiniteDataReader(metas_path, num_actions=num_actions, training=training,
+                           action_mode=action_mode, num_views=num_views,
+                           image_processor=image_processor),
         batch_size=batch_size,
-        num_workers=4,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor if num_workers else None,
         pin_memory=True,
         worker_init_fn=worker_init_fn,
-        persistent_workers=True
+        persistent_workers=num_workers > 0
     )

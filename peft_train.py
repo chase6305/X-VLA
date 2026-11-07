@@ -80,6 +80,10 @@ def get_args_parser():
     # Data
     parser.add_argument("--train_metas_path", type=str, required=True, help="Path to training metadata")
     parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--num_workers", type=int, default=4, help="Data workers; use 0 for in-process loading")
+    parser.add_argument("--prefetch_factor", type=int, default=2, help="Prefetched batches per data worker")
+    parser.add_argument("--use_processor_image_config", action="store_true",
+                        help="Use checkpoint image preprocessing after color augmentation instead of the legacy image transform")
 
     # Optimizer
     parser.add_argument("--learning_rate", type=float, default=1e-4)
@@ -178,6 +182,13 @@ def update_group_lrs(optim, step, args):
 # Main Training
 # ============================================================
 def main(args):
+    if args.num_workers < 0:
+        raise ValueError("num_workers must be non-negative")
+    if args.prefetch_factor < 1:
+        raise ValueError("prefetch_factor must be positive")
+    for name in ("batch_size", "iters", "log_interval", "save_interval"):
+        if getattr(args, name) < 1:
+            raise ValueError(f"{name} must be positive")
     output_dir = Path(args.output_dir)
     accelerator = Accelerator(
         log_with="tensorboard", 
@@ -216,6 +227,10 @@ def main(args):
         num_actions=model.num_actions,
         action_mode=model.action_mode,
         training=True,
+        num_workers=args.num_workers,
+        prefetch_factor=args.prefetch_factor,
+        num_views=processor.num_views,
+        image_processor=processor.image_processor if getattr(args, "use_processor_image_config", False) else None,
     )
 
     # Optimizer
@@ -241,7 +256,7 @@ def main(args):
         lang = processor.encode_language(batch["language_instruction"])
         batch.pop("language_instruction", None)
         inputs = {**batch, **lang}
-        inputs = {k: v.cuda(non_blocking=True) for k, v in inputs.items()}
+        inputs = {k: v.to(accelerator.device, non_blocking=True) for k, v in inputs.items()}
         # Update LR per group
         update_group_lrs(optim, global_step, args)
 
@@ -262,7 +277,7 @@ def main(args):
             accelerator.log(logs, step=global_step)
 
             if accelerator.is_main_process:
-                dt = (time.time() - t0) / args.log_interval
+                dt = (time.time() - t0) / (args.log_interval if global_step else 1)
                 t0 = time.time()
                 logger.info(
                     f"[{global_step}/{args.iters}] "

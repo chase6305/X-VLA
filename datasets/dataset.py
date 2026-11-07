@@ -27,6 +27,21 @@ from .utils import action_slice
 from .domain_config import DATA_WEIGHTS, DATA_DOMAIN_ID
 from .domain_handler.registry import get_handler_cls
 
+
+class _ProcessorImageTransform:
+    def __init__(self, image_processor, training):
+        self.image_processor = image_processor
+        self.augmentation = (transforms.ColorJitter(brightness=0.2, contrast=0.2,
+                             saturation=0.2, hue=0.) if training else torch.nn.Identity())
+
+    def __call__(self, image):
+        image = self.augmentation(image)
+        pixels = self.image_processor([image], return_tensors="pt")["pixel_values"][0]
+        if pixels.is_complex():
+            raise ValueError("Image processors must return real-valued pixels.")
+        return pixels if pixels.is_floating_point() else pixels.float()
+
+
 class InfiniteDataReader(IterableDataset):
     """
     Output sample:
@@ -46,6 +61,7 @@ class InfiniteDataReader(IterableDataset):
                  training: bool = True,
                  action_mode: str = "ee6d",
                  lang_aug: str = None,
+                 image_processor=None,
                  ):
         for name, value in (("num_actions", num_actions), ("num_views", num_views)):
             if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -55,6 +71,8 @@ class InfiniteDataReader(IterableDataset):
         self.num_actions = num_actions
         self.action_mode = action_mode
         self.metas: Dict[str, dict] = {}
+        if image_processor is not None and not callable(image_processor):
+            raise ValueError("image_processor must be callable when provided")
         print("use action mode:", action_mode)
         if fileio.isdir(metas_path):
             meta_files = list(fileio.list_dir_or_file(metas_path, suffix=".json", recursive=True, list_dir=False))
@@ -99,6 +117,8 @@ class InfiniteDataReader(IterableDataset):
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225), inplace=True),
         ]
         self.image_aug = transforms.Compose(self.image_aug)
+        if image_processor is not None:
+            self.image_aug = _ProcessorImageTransform(image_processor, training)
 
     def _iter_one_dataset(self, dataset_name: str, trajectory_offset: int = 0) -> Iterable[dict]:
         meta = self.metas[dataset_name]

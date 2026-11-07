@@ -311,11 +311,38 @@ accelerate launch \
 | `--models`           | Base model (e.g., `'2toINF/X-VLA-Pt'`) |
 | `--train_metas_path` | Path to meta JSON file(s)              |
 | `--batch_size`       | Batch size                             |
+| `--num_workers`      | Data workers (default: 4); use 0 for in-process loading |
+| `--prefetch_factor`  | Prefetched batches per worker (default: 2) |
+| `--use_processor_image_config` | Opt in to the checkpoint's image resizing/cropping and normalization |
 | `--learning_rate`    | Base LR                                |
 | `--learning_coef`    | LR multiplier for soft prompts         |
 | `--iters`            | Total training iterations              |
-| `--freeze_steps`     | Steps to freeze backbone               |
-| `--warmup_steps`     | Warmup iterations                      |
+| `--freeze_steps`     | Initial steps with zero backbone/core learning rate; gradients are still computed |
+| `--warmup_steps`     | Post-freeze warmup iterations; used only with `--use_cosine_decay` |
+| `--use_cosine_decay` | Enable the current post-freeze warmup/cosine schedule |
+
+Both training entrypoints use the saved processor's camera count when building
+the dataset, keeping custom camera layouts consistent with inference.
+Tensor batches follow Accelerator's selected device, including CPU debugging runs.
+Batch size, iteration count and logging/checkpoint intervals must be positive.
+
+With `--use_cosine_decay`, the schedule starts at `freeze_steps` for every
+parameter group, including the already active prompt/head groups. Without this
+flag, unfrozen groups use their base rates and `warmup_steps` has no effect.
+
+Each data worker can also create NumPy/SciPy BLAS and Arrow thread pools.
+Compare launch-time `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS` and
+`MKL_NUM_THREADS` limits alongside worker and prefetch counts. Set them before
+library imports; they also affect CPU work in the main process. Choose limits
+from measurements on the target machine rather than assuming more threads help.
+
+Use `--use_processor_image_config` when training with custom image preprocessing.
+The reader then applies color augmentation to the source image before the saved
+image processor's resize/crop, rescaling and normalization. Without this flag,
+the existing 224-pixel resize, augmentation order and ImageNet normalization stay
+unchanged. Inference and augmentation-free loading use the same processor settings
+when this option is enabled. The checkpoint model must support the resulting image
+dimensions.
 
 ---
 
