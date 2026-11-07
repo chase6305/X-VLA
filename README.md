@@ -268,6 +268,19 @@ uses `robot_type`. LeRobot v2.1 sources use `root_path` as their identifier.
 
 ### Launch Training with Accelerate
 
+Both full-model and LoRA checkpoint directories include the processor configuration,
+image preprocessing settings and tokenizer. When deploying an adapter with a custom
+processor, pass its checkpoint directory via `--processor_path` alongside `--LoRA_path`.
+
+These exports do not include optimizer, RNG or data-iterator state. The saved
+`global_step` is informational: both training entrypoints start their optimizer
+and schedule from step zero, so loading weights does not resume the original
+training trajectory.
+
+Image inputs remain real floating-point tensors. If rescaling and normalization
+are disabled, integer pixels are converted to FP32 without changing their values;
+existing floating-point pixel dtypes are preserved.
+
 ```bash
 accelerate launch \
     --mixed_precision bf16 \
