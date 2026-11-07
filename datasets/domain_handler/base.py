@@ -27,6 +27,7 @@ import torch
 from mmengine import fileio
 from PIL import Image
 from scipy.interpolate import interp1d
+from ..utils import open_h5
 
 class DomainHandler(ABC):
     """
@@ -59,10 +60,7 @@ class DomainHandler(ABC):
 
 def _open_h5(path: str) -> h5py.File:
     """Open HDF5 from local FS or remote backend via mmengine.fileio."""
-    try:
-        return h5py.File(path, "r")
-    except OSError:
-        return h5py.File(io.BytesIO(fileio.get(path)), "r")
+    return open_h5(path)
 
 
 class BaseHDF5Handler(DomainHandler):
@@ -82,7 +80,7 @@ class BaseHDF5Handler(DomainHandler):
 
     # --- Optional overrides -------------------------------------------------
     def get_image_datasets(self, f: h5py.File) -> Sequence[Any]:
-        keys: Sequence[str] = self.meta["observation_key"]
+        keys: Sequence[str] = list(self.meta["observation_key"])[:self.num_views]
         return [f[k][()] for k in keys]
 
     def read_instruction(self, f: h5py.File) -> str:
@@ -145,27 +143,29 @@ class BaseHDF5Handler(DomainHandler):
         ref = (lt + rt) / 2.0
 
         V = min(self.num_views, len(images))
+        trajectory_end = float(ref.max())
         for idx in idxs:
 
             # Query future window
             cur = ref[idx]
-            q = np.linspace(cur, min(cur + qdur, float(ref.max())), num_actions + 1, dtype=np.float32)
-            lseq = torch.tensor(L(q))
-            rseq = torch.tensor(R(q))
+            q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
+            lseq = torch.from_numpy(L(q))
+            rseq = torch.from_numpy(R(q))
 
             # Skip static segments
             if (lseq[1] - lseq[0]).abs().max() < 1e-5 and (rseq[1] - rseq[0]).abs().max() < 1e-5: continue
             
             # Language augmentation
+            sample_ins = ins
             if training and lang_aug_map and ins in lang_aug_map:
-                ins = random.choice(lang_aug_map[ins])
+                sample_ins = random.choice(lang_aug_map[ins])
             
             imgs = [image_aug(self._pil_from_arr(images[v][idx])) for v in range(V)]
             while len(imgs) < self.num_views: imgs.append(torch.zeros_like(imgs[0]))
             image_input = torch.stack(imgs, dim=0)
 
             yield {
-                "language_instruction": ins,
+                "language_instruction": sample_ins,
                 "image_input": image_input,
                 "image_mask": image_mask,
                 "abs_trajectory": torch.cat([lseq, rseq], -1).float()

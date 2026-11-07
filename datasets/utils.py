@@ -15,8 +15,9 @@
 # ------------------------------------------------------------------------------
 
 from __future__ import annotations
-import io, numpy as np, pyarrow.parquet as pq, av, cv2
+import io, os, numpy as np, pyarrow.parquet as pq, av, cv2
 from mmengine import fileio
+from mmengine.fileio.backends import LocalBackend
 from PIL import Image
 from scipy.spatial.transform import Rotation as R
 import h5py
@@ -27,20 +28,34 @@ def read_bytes(path: str) -> bytes:
     return fileio.get(path)
 
 def open_h5(path: str) -> h5py.File:
-    try: return h5py.File(path, "r")
-    except OSError: return h5py.File(io.BytesIO(read_bytes(path)), "r")
+    path = os.fspath(path) if isinstance(path, os.PathLike) else path
+    if not isinstance(path, str):
+        return h5py.File(path, "r")
+    if "://" not in path and type(fileio.get_file_backend(path, enable_singleton=True)) is LocalBackend:
+        try: return h5py.File(path, "r")
+        except OSError: pass
+    return h5py.File(io.BytesIO(read_bytes(path)), "r")
 
 def read_video_to_frames(path: str) -> np.ndarray:
-    buf = io.BytesIO(read_bytes(path)); container = av.open(buf, options={'threads': '2'})
+    path = str(path)
+    source = (path if "://" not in path and os.path.isfile(path)
+              and type(fileio.get_file_backend(path, enable_singleton=True)) is LocalBackend
+              else io.BytesIO(read_bytes(path)))
     frames = []
-    for packet in container.demux(video=0):
-        for f in packet.decode(): frames.append(f.to_ndarray(format="rgb24"))
-    container.close()
+    with av.open(source, options={'threads': '2'}) as container:
+        for packet in container.demux(video=0):
+            for f in packet.decode(): frames.append(f.to_ndarray(format="rgb24"))
     return np.stack(frames, axis=0)
 
-def read_parquet(path: str) -> dict:
+def read_parquet(path: str, columns: Sequence[str] | None = None) -> dict:
+    path = str(path)
+    if ("://" not in path and os.path.isfile(path)
+            and type(fileio.get_file_backend(path, enable_singleton=True)) is LocalBackend):
+        # Read just this file; directory partition names must not alter its schema.
+        with pq.ParquetFile(path) as source:
+            return source.read(columns=columns).to_pydict()
     buf = io.BytesIO(read_bytes(path))
-    return pq.read_table(buf).to_pydict()
+    return pq.read_table(buf, columns=columns).to_pydict()
 
 def decode_image_from_bytes(x) -> Image.Image:
     if isinstance(x, (bytes, bytearray)): x = np.frombuffer(x, dtype=np.uint8)

@@ -103,7 +103,7 @@ class LiberoHandler(BaseHDF5Handler):
     dataset_name = "libero"
 
     def get_image_datasets(self, f: h5py.File) -> Sequence[Any]:
-        keys = self.meta["observation_key"]
+        keys = list(self.meta["observation_key"])[:self.num_views]
         images = [f[k] for k in keys]
         # Drop the first frame (image desync quirk in original data)
         return [img[1:] for img in images]

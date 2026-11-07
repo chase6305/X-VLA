@@ -31,26 +31,34 @@ class AGIBOTLeRobotHandler(DomainHandler):
         ep = item["episode_index"]; chunk = f"chunk-{ep//1000:03d}"; key = f"episode_{ep:06d}"
 
         pq_path = fileio.join_path(item["top_path"], "data", chunk, key + ".parquet")
-        vkeys = ["observation.images.head", "observation.images.hand_left", "observation.images.hand_right"]
+        vkeys = ["observation.images.head", "observation.images.hand_left", "observation.images.hand_right"][:self.num_views]
         vid_paths = [fileio.join_path(item["top_path"], "videos", chunk, k, key + ".mp4") for k in vkeys]
         images = [read_video_to_frames(p) for p in vid_paths]
-        image_mask = torch.ones(self.num_views, dtype=torch.bool)
+        image_mask = torch.zeros(self.num_views, dtype=torch.bool)
+        image_mask[:len(images)] = True
 
-        data = read_parquet(pq_path)
+        data = read_parquet(pq_path, columns=["actions.end.position",
+                            "actions.end.orientation", "actions.effector.position"])
         pos = np.asarray(data["actions.end.position"])     # [T,2,3]
         ori = np.asarray(data["actions.end.orientation"])  # [T,2,4]
         grip = np.asarray(data["actions.effector.position"])  # [T,2]
         left = np.concatenate([pos[:,0], quat_to_rotate6d(ori[:,0]), grip[:, :1]], -1)
         right = np.concatenate([pos[:,1], quat_to_rotate6d(ori[:,1]), grip[:, 1:]], -1)
+        del data, pos, ori, grip
+        all_action = np.concatenate([left, right], axis=-1)
+        del left, right
 
-        freq = 30.0; qdur = 4.0; t = np.arange(left.shape[0], dtype=np.float64) / freq
-        L = interp1d(t, left,  axis=0, bounds_error=False, fill_value=(left[0], left[-1]))
-        R = interp1d(t, right, axis=0, bounds_error=False, fill_value=(right[0], right[-1]))
+        freq = 30.0; qdur = 4.0; t = np.arange(all_action.shape[0], dtype=np.float64) / freq
+        # These sorted arrays are private to this episode and never mutated.
+        all_action = interp1d(t, all_action, axis=0, bounds_error=False,
+                             fill_value=(all_action[0], all_action[-1]),
+                             copy=False, assume_sorted=True)
         start = item["action_config"][0]["start_frame"]; end = item["action_config"][-1]["end_frame"] - 30
         idxs = list(range(start, end, 4 if training else 120))
         if training: random.shuffle(idxs)
 
         ins = item["tasks"][0].split(" | ")[0]
+        trajectory_end = float(t.max())
 
         for idx in idxs:
             imgs = []
@@ -59,13 +67,15 @@ class AGIBOTLeRobotHandler(DomainHandler):
             while len(imgs) < self.num_views: imgs.append(torch.zeros_like(imgs[0]))
             image_input = torch.stack(imgs, 0)
             cur = t[idx]
-            q = np.linspace(cur, min(cur + qdur, float(t.max())), num_actions + 1, dtype=np.float32)
-            lseq, rseq = torch.tensor(L(q)), torch.tensor(R(q))
-            if (lseq[1]-lseq[0]).abs().max() < 1e-5 and (rseq[1]-rseq[0]).abs().max() < 1e-5:continue
-            if lang_aug_map is not None and ins in lang_aug_map: ins = random.choice(lang_aug_map[ins])
+            q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
+            cur_action = torch.from_numpy(all_action(q))
+            if (cur_action[1]-cur_action[0]).abs().max() < 1e-5: continue
+            sample_ins = ins
+            if training and lang_aug_map and ins in lang_aug_map:
+                sample_ins = random.choice(lang_aug_map[ins])
             yield {
-                "language_instruction": ins,
+                "language_instruction": sample_ins,
                 "image_input": image_input,
                 "image_mask": image_mask,
-                "abs_trajectory": torch.cat([lseq, rseq], -1).float(),
+                "abs_trajectory": cur_action.float(),
             }

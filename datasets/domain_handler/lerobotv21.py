@@ -45,16 +45,18 @@ class LeRobotV21Handler(DomainHandler):
             fileio.join_path(self.meta["root_path"], self.meta["video_path"]).format(
             episode_chunk=episode_chunk, episode_index=episode_index, video_key = vkey
         ))
-        for vkey in self.CAMERA_VIEW]
+        for vkey in self.CAMERA_VIEW[:self.num_views]]
 
-        image_mask = torch.ones(self.num_views, dtype=torch.bool)
-        data = read_parquet(data_path)
+        image_mask = torch.zeros(self.num_views, dtype=torch.bool)
+        image_mask[:len(images)] = True
+        data = read_parquet(data_path, columns=self.ACTION_KEY)
         
         # do prefix sum for action.base_delta
         # data['action.base'] = np.cumsum(np.asarray(data['action.base_delta']), axis=0)
         
         all_action = np.concatenate(
             [np.asarray(data[action_key]) for action_key in self.ACTION_KEY], axis=-1)
+        del data
         all_action = np.concatenate(
             [all_action[:1], all_action[:-1]], axis=0
         ) # pad the first action
@@ -63,10 +65,12 @@ class LeRobotV21Handler(DomainHandler):
         idxs = list(range(1, all_action.shape[0] - 30))
         
         if training: random.shuffle(idxs)
+        # Detach endpoint rows so fill values do not retain the full raw matrix.
         all_action = interp1d(t, all_action,  axis=0, bounds_error=False, 
-                              fill_value=(all_action[0], all_action[-1]))
+                              fill_value=(all_action[0].copy(), all_action[-1].copy()))
         
         ins = item["tasks"][0]
+        trajectory_end = float(t.max())
         for idx in idxs:
             imgs = [] 
             for v in range(min(self.num_views, len(images))):
@@ -74,8 +78,8 @@ class LeRobotV21Handler(DomainHandler):
             while len(imgs) < self.num_views: imgs.append(torch.zeros_like(imgs[0]))
             image_input = torch.stack(imgs, 0)
             cur = t[idx]
-            q = np.linspace(cur, min(cur + qdur, float(t.max())), num_actions + 1, dtype=np.float32)
-            cur_action = torch.tensor(all_action(q))
+            q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
+            cur_action = torch.from_numpy(all_action(q))
             if (cur_action[1]-cur_action[0]).abs().max() < 1e-5: continue
             
             ### pad the action to max_action_dim
@@ -84,10 +88,12 @@ class LeRobotV21Handler(DomainHandler):
                 torch.zeros((cur_action.shape[0], 20 - cur_action.shape[1]))
             ], dim=-1)
             
-            if lang_aug_map is not None and ins in lang_aug_map: ins = random.choice(lang_aug_map[ins])
+            sample_ins = ins
+            if training and lang_aug_map and ins in lang_aug_map:
+                sample_ins = random.choice(lang_aug_map[ins])
             
             yield {
-                "language_instruction": ins,
+                "language_instruction": sample_ins,
                 "image_input": image_input,
                 "image_mask": image_mask,
                 "abs_trajectory": cur_action.float(),

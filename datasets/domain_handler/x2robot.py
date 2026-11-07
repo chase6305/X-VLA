@@ -29,35 +29,40 @@ class X2RobotHandler(DomainHandler):
                      **kwargs):
         
         item = self.meta["datalist"][traj_idx]
-        if "top_path" in self.meta: item["path"] = fileio.join_path(self.meta["top_path"], item["path"])
-        data_dir = fileio.join_path(item["path"], item["name"])
+        path = fileio.join_path(self.meta["top_path"], item["path"]) if "top_path" in self.meta else item["path"]
+        data_dir = fileio.join_path(path, item["name"])
         ins = item["instruction"]
 
         action_file = fileio.join_path(data_dir, item["name"] + ".json")
         with open(action_file, "r") as f:  action_data = json.load(f)["data"]
         images = [read_video_to_frames(
             fileio.join_path(data_dir, f"{vkey}.mp4"))
-            for vkey in self.CAMERA_VIEW]
-        image_mask = torch.ones(self.num_views, dtype=torch.bool)
+            for vkey in self.CAMERA_VIEW[:self.num_views]]
+        image_mask = torch.zeros(self.num_views, dtype=torch.bool)
+        image_mask[:len(images)] = True
 
         all_action = {key: [] for key in self.ACTION_KEY}
         for frame_data in action_data:
             for key in self.ACTION_KEY:
                 if not isinstance(frame_data[key], list): 
                     frame_data[key] = [frame_data[key]]
-                all_action[key].append(np.array(frame_data[key]))
+                all_action[key].append(frame_data[key])
+        # Stack one column at a time without retaining per-frame arrays for all columns.
         all_action = {key: np.stack(all_action[key]) for key in self.ACTION_KEY}
         all_action = np.concatenate(
             [np.asarray(all_action[key]) for key in self.ACTION_KEY], axis=-1)
+        del action_data
         
         assert all_action.shape[0] == len(images[0]), \
             f"action length {all_action.shape[0]} != image length {len(images[0])}"
         freq = 30.0; qdur = 1.0; t = np.arange(all_action.shape[0], dtype=np.float64) / freq
         idxs = list(range(0, all_action.shape[0] - 30))
         if training: random.shuffle(idxs)
+        # Detach endpoint rows so fill values do not retain the full raw matrix.
         all_action = interp1d(t, all_action,  axis=0, bounds_error=False, 
-                              fill_value=(all_action[0], all_action[-1]))
+                              fill_value=(all_action[0].copy(), all_action[-1].copy()))
         
+        trajectory_end = float(t.max())
         for idx in idxs:
             imgs = [] 
             for v in range(min(self.num_views, len(images))):
@@ -65,8 +70,8 @@ class X2RobotHandler(DomainHandler):
             while len(imgs) < self.num_views: imgs.append(torch.zeros_like(imgs[0]))
             image_input = torch.stack(imgs, 0)
             cur = t[idx]
-            q = np.linspace(cur, min(cur + qdur, float(t.max())), num_actions + 1, dtype=np.float32)
-            cur_action = torch.tensor(all_action(q))
+            q = np.linspace(cur, min(cur + qdur, trajectory_end), num_actions + 1, dtype=np.float32)
+            cur_action = torch.from_numpy(all_action(q))
             if (cur_action[1]-cur_action[0]).abs().max() < 1e-5: continue
             
             ### pad the action to max_action_dim
@@ -75,10 +80,12 @@ class X2RobotHandler(DomainHandler):
                 torch.zeros((cur_action.shape[0], 20 - cur_action.shape[1]))
             ], dim=-1)
             
-            if lang_aug_map is not None and ins in lang_aug_map: ins = random.choice(lang_aug_map[ins])
+            sample_ins = ins
+            if training and lang_aug_map and ins in lang_aug_map:
+                sample_ins = random.choice(lang_aug_map[ins])
             
             yield {
-                "language_instruction": ins,
+                "language_instruction": sample_ins,
                 "image_input": image_input,
                 "image_mask": image_mask,
                 "abs_trajectory": cur_action.float(),
