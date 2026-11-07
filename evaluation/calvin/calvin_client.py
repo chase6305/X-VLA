@@ -150,6 +150,10 @@ def rollout(env, model, oracle, subtask, annotations, plans, debug):
     obs = env.get_obs()
     lang = annotations[subtask][0].split("\n")[0].replace("\u2019", "'")
     start_info = env.get_info()
+    # Start a fresh plan for each subtask while retaining commanded proprioception.
+    action_plan = getattr(model, "action_plan", None)
+    if action_plan is not None:
+        action_plan.clear()
     frames = []
     for step in range(EP_LEN):
         action = model.step(obs, lang)
