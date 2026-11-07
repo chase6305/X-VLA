@@ -139,6 +139,8 @@ class AGIWolrdHandler(DomainHandler):  # Note: "Wolrd" looks like a typo; kept f
         
         random.shuffle(split_list)
 
+        # Reuse private grids, rebuilding the input grid when window length changes.
+        t_old = t_new = None
         for traj_start_idx, traj_end_idx in split_list:
             if traj_end_idx - traj_start_idx < 2:
                 continue
@@ -176,8 +178,10 @@ class AGIWolrdHandler(DomainHandler):  # Note: "Wolrd" looks like a typo; kept f
                 seg = abs_ee6d[idx:idx + rel] if 'ee6d' in action_mode else abs_joint[idx:idx + rel]
 
                 # Linear interpolate to fixed length (inclusive endpoints -> +1)
-                t_old = np.linspace(0.0, 1.0, seg.shape[0])
-                t_new = np.linspace(0.0, 1.0, num_actions + 1)
+                if t_old is None or t_old.size != seg.shape[0]:
+                    t_old = np.linspace(0.0, 1.0, seg.shape[0])
+                if t_new is None:
+                    t_new = np.linspace(0.0, 1.0, num_actions + 1)
                 abs_trajectory = interp1d(t_old, seg, axis=0, kind='linear', bounds_error=False)(t_new)
 
                 # Build image paths (different layouts for "extra")

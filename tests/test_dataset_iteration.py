@@ -359,7 +359,8 @@ class InstructionTests(unittest.TestCase):
 
     def test_agiworld_skips_segments_without_two_frames_but_keeps_valid_short_windows(self):
         for length, splits, expected in ((0, [], 0), (1, [], 0), (2, [], 1),
-                                         (2, [1], 0), (3, [1], 1)):
+                                         (2, [1], 0), (3, [1], 1),
+                                         (11, [0, 1, 4, 6], 3)):
             with self.subTest(length=length, splits=splits), tempfile.TemporaryDirectory() as directory:
                 split_file = Path(directory) / 'splits.json'
                 split_file.write_text(json.dumps({'episode': splits}))
