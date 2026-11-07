@@ -156,6 +156,9 @@ The client communicates via HTTP POST, sending multimodal data (vision + languag
 
 #### Payload Structure
 
+Image payloads accept RGB arrays or one-dimensional `uint8` arrays containing
+encoded PNG/JPEG bytes; both forms are decoded to RGB.
+
 | Key                    | Type                      | Description                                           |
 | :--------------------- | :------------------------ | :---------------------------------------------------- |
 | `proprio`              | `json_numpy.dumps(array)` | Current proprioceptive state (e.g., joint positions). |

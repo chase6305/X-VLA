@@ -249,6 +249,9 @@ class XVLA(PreTrainedModel):
                     if isinstance(v, np.ndarray):
                         if v.ndim == 1:  # encoded bytes
                             v = cv2.imdecode(v, cv2.IMREAD_COLOR)
+                            if v is None:
+                                return JSONResponse({"error": f"Could not decode {key}."}, status_code=400)
+                            v = cv2.cvtColor(v, cv2.COLOR_BGR2RGB)
                         images.append(Image.fromarray(v))
                     elif isinstance(v, (list, tuple)):
                         images.append(Image.fromarray(np.array(v)))
