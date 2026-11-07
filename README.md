@@ -110,6 +110,25 @@ This design avoids package conflicts and supports distributed inference across G
 
 ### 3️⃣ Launching the Inference Server
 
+The command-line server supports optional inference optimizations:
+
+```bash
+python deploy.py --model_path /path/to/model --LoRA_path /path/to/adapter --merge_lora --compile_action_head
+```
+
+`--merge_lora` folds the adapter into the loaded base weights in memory and requires
+`--LoRA_path`. `--compile_action_head` uses `torch.compile` on the action head,
+including when an unmerged LoRA adapter is active. Both options are disabled by
+default and retain FP32 inference. Compilation increases the first request's
+latency and may run again for different input shapes; warm up representative
+requests before measuring latency. Neither option writes to checkpoint files.
+
+Compilation also requires a working PyTorch Inductor build toolchain. With
+PyTorch 2.1, the C++ extension loader uses legacy setuptools interfaces; our
+isolated CPU compilation check uses `setuptools==69.5.1`. New setuptools
+releases can prevent that older compiler path from loading. This build
+dependency is separate from the default eager inference path.
+
 ```python
 from transformers import AutoModel, AutoProcessor
 import json_numpy
