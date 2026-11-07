@@ -146,6 +146,17 @@ The client communicates via HTTP POST, sending multimodal data (vision + languag
 | `domain_id`            | `int`                     | Identifier for the current robotic embodiment/domain. |
 | `steps`                | `int`                     | denoising steps for flow-matching based generation (e.g., 10).         |
 
+Supply camera slots consecutively from `image0`. Missing intermediate slots or
+invalid image payloads return HTTP 400 so that camera identities are preserved.
+The slot limit follows the processor's `num_views` (three by default); extra
+numbered camera slots return HTTP 400 rather than being ignored.
+
+Use a `domain_id` within the checkpoint's configured domain range. `proprio`
+must be a one-dimensional real state vector whose values remain finite in the
+model's precision. EE6D checkpoints require 20 state channels and joint checkpoints
+require 14; auto mode accepts states up to its configured padded width.
+Fractional `domain_id` or `steps` values return HTTP 400 instead of being truncated.
+
 #### Example Client Code
 
 ```python
@@ -156,8 +167,9 @@ import json_numpy
 server_url = "http://localhost:8000/act"
 timeout = 5
 
-# Prepare inputs
-proprio = np.zeros(7, dtype=np.float32)
+# Prepare inputs for an ee6d checkpoint (use your checkpoint's state layout).
+proprio = np.zeros(20, dtype=np.float32)
+proprio[[3, 6]] = 1.0  # Identity 6D rotation for the left arm; right arm is unused.
 image = np.zeros((256, 256, 3), dtype=np.uint8)
 instruction = "Move the gripper to the target position"
 

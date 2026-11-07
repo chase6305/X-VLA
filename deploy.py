@@ -22,6 +22,13 @@ import torch
 from models.modeling_xvla import XVLA
 from models.processing_xvla import XVLAProcessor
 import sys
+import signal
+import threading
+
+
+def _exit_on_sigterm(signum, _frame):
+    # Uvicorn re-raises shutdown signals after restoring the previous handlers.
+    raise SystemExit(128 + signum)
 
 def main():
     parser = argparse.ArgumentParser(description="Launch XVLA inference FastAPI server")
@@ -41,6 +48,12 @@ def main():
 
     args = parser.parse_args()
     os.makedirs(args.output_dir, exist_ok=True)
+    info_path = osp.join(args.output_dir, "info.json")
+    if osp.exists(info_path):
+        print(f"❌ Error: {info_path} already exists. "
+              "This usually means another server is still running or the previous job did not clean up properly.")
+        print("👉 Please remove it manually or use a different --output_dir.")
+        sys.exit(1)
 
     print("🚀 Starting XVLA Inference Server...")
     print(f"🔹 Model Path  : {args.model_path}")
@@ -68,6 +81,7 @@ def main():
         print("✅ XVLAProcessor loaded successfully.")
     except Exception as e:
         print(f"⚠️ No processor found or failed to load: {e}")
+        sys.exit(1)
 
     # --------------------------------------------------------------------------
     # Load model
@@ -95,7 +109,11 @@ def main():
         print("✅ Model successfully loaded and moved to device.")
     except Exception as e:
         print(f"❌ Failed to load model: {e}")
-        return
+        sys.exit(1)
+
+    if not callable(getattr(model, "run", None)):
+        print("❌ The loaded model does not implement `.run()` (FastAPI entrypoint).")
+        sys.exit(1)
 
     # --------------------------------------------------------------------------
     # SLURM environment detection
@@ -120,7 +138,6 @@ def main():
     # --------------------------------------------------------------------------
     # Write info.json for bookkeeping (safe version)
     # --------------------------------------------------------------------------
-    info_path = osp.join(args.output_dir, "info.json")
     infos = {
         "host": host,
         "port": args.port,
@@ -128,35 +145,43 @@ def main():
         "node_list": node_list or "none",
     }
 
-    # --- Check existence before writing ---
-    if osp.exists(info_path):
-        print(f"❌ Error: {info_path} already exists. "
-            f"This usually means another server is still running or the previous job did not clean up properly.")
-        print("👉 Please remove it manually or use a different --output_dir.")
-        sys.exit(1)
-
-    # --- Write safely ---
+    previous_sigterm = None
+    if threading.current_thread() is threading.main_thread():
+        previous_sigterm = signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    info_created = False
+    created_info_stat = None
     try:
-        with open(info_path, "w") as f:
-            json.dump(infos, f, indent=4)
-        print(f"📝 Server info written to {info_path}")
-    except Exception as e:
-        print(f"⚠️ Failed to write {info_path}: {e}")
-        sys.exit(1)
+        # --- Write safely ---
+        try:
+            with open(info_path, "x") as f:
+                info_created = True
+                created_info_stat = os.fstat(f.fileno())
+                json.dump(infos, f, indent=4)
+            print(f"📝 Server info written to {info_path}")
+        except Exception as e:
+            print(f"⚠️ Failed to write {info_path}: {e}")
+            sys.exit(1)
 
-    # --------------------------------------------------------------------------
-    # Launch FastAPI server
-    # --------------------------------------------------------------------------
-    print(f"\n🌐 Launching FastAPI service at http://{host}:{args.port} ...")
-    try:
-        if hasattr(model, "run"):
+        # ----------------------------------------------------------------------
+        # Launch FastAPI server
+        # ----------------------------------------------------------------------
+        print(f"\n🌐 Launching FastAPI service at http://{host}:{args.port} ...")
+        try:
             model.run(processor=processor, host=host, port=args.port)
-        else:
-            print("❌ The loaded model does not implement `.run()` (FastAPI entrypoint).")
-    except KeyboardInterrupt:
-        print("\n🛑 Server stopped manually.")
-    except Exception as e:
-        print(f"❌ Server failed to start: {e}")
+        except KeyboardInterrupt:
+            print("\n🛑 Server stopped manually.")
+        except Exception as e:
+            print(f"❌ Server failed to start: {e}")
+            sys.exit(1)
+    finally:
+        if previous_sigterm is not None:
+            signal.signal(signal.SIGTERM, previous_sigterm)
+        if info_created:
+            try:
+                if created_info_stat is None or osp.samestat(created_info_stat, os.lstat(info_path)):
+                    os.remove(info_path)
+            except FileNotFoundError:
+                pass
 
 
 if __name__ == "__main__":

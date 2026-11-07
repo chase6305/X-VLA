@@ -109,17 +109,18 @@ class XVLA(PreTrainedModel):
     ) -> Dict[str, torch.Tensor]:
         """
         Encode text + multi-view images via Florence2 encoder.
+        Each sample requires a valid primary view in slot zero.
 
         Returns:
           { "vlm_features": [B, T_enc, D], "aux_visual_inputs": [B, (V-1)*N, D] }
         """
         B, V = pixel_values.shape[:2]
-        flat_mask = image_mask.view(-1).to(torch.bool)         # [B*V]
+        if B == 0 or V == 0 or image_mask.shape != (B, V):
+            raise ValueError("image_mask must match a non-empty image batch and view axis.")
+        if not image_mask[:, 0].to(torch.bool).all():
+            raise ValueError("Each sample requires a valid primary image view in slot zero.")
+        flat_mask = image_mask.reshape(-1).to(torch.bool)      # [B*V]
         flat_images = pixel_values.flatten(0, 1)                # [B*V, C, H, W]
-
-        num_valid = int(flat_mask.sum().item())
-        if num_valid == 0:
-            raise ValueError("At least one image view must be valid per batch.")
 
         valid_images = flat_images[flat_mask]                   # [#valid, C, H, W]
         valid_feats = self.vlm._encode_image(valid_images)      # [#valid, N, D]
@@ -226,6 +227,8 @@ class XVLA(PreTrainedModel):
         """
         if self.app is not None:
             return
+        if not callable(processor):
+            raise ValueError("A callable processor is required to start the inference service.")
 
         app = FastAPI()
 
@@ -233,10 +236,15 @@ class XVLA(PreTrainedModel):
         def act(payload: Dict[str, Any]):
             try:
                 self.eval()
-                # Decode up to 3 image inputs
+                # Decode consecutive camera slots from the processor's saved layout.
                 images = []
-                for key in ("image0", "image1", "image2"):
-                    if key not in payload: continue
+                camera_keys = tuple(f"image{index}" for index in range(getattr(processor, "num_views", 3)))
+                if any(key.startswith("image") and key[5:].isdigit() and key not in camera_keys for key in payload):
+                    return JSONResponse({"error": "Camera slot exceeds the processor's configured view count."}, status_code=400)
+                image_keys = [key for key in camera_keys if key in payload]
+                if image_keys != list(camera_keys[:len(image_keys)]):
+                    return JSONResponse({"error": "Camera slots must be consecutive, starting with image0."}, status_code=400)
+                for key in image_keys:
                     v = json_numpy.loads(payload[key])
                     if isinstance(v, np.ndarray):
                         if v.ndim == 1:  # encoded bytes
@@ -246,6 +254,8 @@ class XVLA(PreTrainedModel):
                         images.append(Image.fromarray(np.array(v)))
                     elif isinstance(v, str):
                         images.append(Image.open(v))
+                    else:
+                        return JSONResponse({"error": f"Invalid image payload for {key}."}, status_code=400)
                 if not images:
                     return JSONResponse({"error": "No valid images found."}, status_code=400)
 
@@ -255,12 +265,32 @@ class XVLA(PreTrainedModel):
                     return JSONResponse({"error": "Processor returned incomplete inputs."}, status_code=400)
 
                 # Build proprio/domain tensors
-                proprio = torch.as_tensor(np.asarray(json_numpy.loads(payload["proprio"])))
-                domain_id = torch.tensor([int(payload["domain_id"])], dtype=torch.long)
+                proprio = torch.tensor(np.asarray(json_numpy.loads(payload["proprio"])))
+                domain_value = payload["domain_id"]
+                domain = int(domain_value)
+                if isinstance(domain_value, float) and domain_value != domain:
+                    return JSONResponse({"error": "domain_id must be an integer."}, status_code=400)
+                if not 0 <= domain < self.config.num_domains:
+                    return JSONResponse({"error": "domain_id is outside the checkpoint's domain range."}, status_code=400)
+                domain_id = torch.tensor([domain], dtype=torch.long)
+                steps_value = payload.get("steps", 10)
+                steps = int(steps_value)
+                if isinstance(steps_value, float) and steps_value != steps:
+                    return JSONResponse({"error": "steps must be an integer."}, status_code=400)
 
                 # Align to model's device/dtype
                 device = next(self.parameters()).device
                 dtype = next(self.parameters()).dtype
+                if proprio.ndim != 1 or proprio.is_complex():
+                    return JSONResponse({"error": "proprio must be a real state vector."}, status_code=400)
+                proprio = proprio.to(dtype=dtype)
+                if not torch.isfinite(proprio).all():
+                    return JSONResponse({"error": "proprio must be finite in the model's dtype."}, status_code=400)
+                space = getattr(self, "action_space", None)
+                if space is not None and space.name in ("ee6d", "joint", "agibot_ee6d", "auto"):
+                    width = getattr(space, "dim_proprio", space.dim_action)
+                    if proprio.numel() > width or (space.name != "auto" and proprio.numel() != width):
+                        return JSONResponse({"error": "proprio width does not match the checkpoint action space."}, status_code=400)
 
                 def to_model(t: torch.Tensor) -> torch.Tensor:
                     if not isinstance(t, torch.Tensor):
@@ -270,12 +300,11 @@ class XVLA(PreTrainedModel):
 
                 inputs = {k: to_model(v) for k, v in inputs.items()}
                 inputs.update({
-                    "proprio": to_model(proprio.unsqueeze(0)),
+                    "proprio": proprio.unsqueeze(0).to(device=device),
                     "domain_id": domain_id.to(device),
                 })
 
                 # Inference
-                steps = int(payload.get("steps", 10))
                 action = self.generate_actions(**inputs, steps=steps).squeeze(0).float().cpu().numpy()
                 return JSONResponse({"action": action.tolist()})
 
